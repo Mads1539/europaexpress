@@ -77,7 +77,7 @@ const TRAVEL_TYPES = {
 
 // Liste over Hændelser
 const INCIDENT_TYPES = [
-  { type: 'train', label: 'Væltet træ på skinnerne', icon: Train },
+{ type: 'train', label: 'Væltet træ på skinnerne', icon: Train },
 { type: 'train', label: 'Signalfejl', icon: Train },
 { type: 'bus', label: 'Vejspærring på motorvejen', icon: Bus },
 { type: 'bus', label: 'Mangel på chauffører', icon: Bus },
@@ -92,7 +92,6 @@ const AVATARS = ["👨🏼‍💼", "👩🏼‍💼", "👨🏼‍✈️", "�
 
 // Hvor mange minutter man holder stille i en by
 const STOP_DURATION = 2;
-
 
 
 // =========================================================================
@@ -756,10 +755,10 @@ export default function App() {
       let pos = CITIES[p.currentCity]?.pos || [50, 10];
 
       // Tjek om spilleren rejser og har rutesegmenter
-      if (p.isTraveling && p.segments && p.segments.length > 0) {
+      if (p.isTraveling && p.segments && p.segments?.length > 0) {
 
         // 1. Find det aktuelle segment baseret på interpolatedTime
-        let currentSeg = p.segments.find(s =>
+        let currentSeg = p.segments?.find(s =>
         interpolatedTime >= s.departure && interpolatedTime <= s.arrival
         );
 
@@ -769,7 +768,7 @@ export default function App() {
           if (lastFinished) {
             pos = CITIES[lastFinished.to]?.pos;
           } else {
-            pos = CITIES[p.segments[0].from]?.pos;
+            pos = CITIES[p.segments?.[0]?.from]?.pos; // Tilføj punktum efter spørgsmålstegnet
           }
         } else {
           // 3. Beregn positionen i det aktuelle segment
@@ -848,7 +847,32 @@ export default function App() {
   }, [interpolatedTime, gameState?.players]);
 
 
+  // SIKRER AT SPILLEREN ANKOMMER SELVOM HOST ER LAGGY ELLER OFFLINE
+  useEffect(() => {
+    // Tilføj et tjek for om gameState overhovedet er klar
+    if (role === 'player' && currentPlayer?.isTraveling && currentPlayer?.segments?.length > 0 && gameState?.status === 'playing') {
+      const finalArrival = currentPlayer.segments[currentPlayer.segments.length - 1].arrival;
 
+      // Øg bufferen til 5 minutter, så den ikke trigger ved små lag,
+      // og tjek at interpolatedTime faktisk er et validt tal
+      if (typeof interpolatedTime === 'number' && interpolatedTime > finalArrival + 5) {
+        console.log("Host reagerer ikke - afslutter rejse lokalt");
+        const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+
+        updateDoc(sessionRef, {
+          players: gameState.players.map(p =>
+          p.id === user.uid ? {
+            ...p,
+            isTraveling: false,
+            currentCity: p.destinationCity,
+            segments: null,
+            travelType: null
+          } : p
+          )
+        });
+      }
+    }
+  }, [interpolatedTime, currentPlayer?.isTraveling, role, gameState?.status]);
 
   // =========================================================================
   // 6.3 HOST-LOOPET (Spillets "Hjerte" - kører kun for værten)
@@ -909,20 +933,22 @@ export default function App() {
         }
 
 
-        // --- 3. ANKOMST-TJEK (Er spillerne fremme?) ---
-
+        // --- 3. ANKOMST-TJEK (Find dette i dit host-loop) ---
         const players = cur.players.map(p => {
-          if (p.isTraveling && p.segments) {
-            const finalArrival = p.segments[p.segments.length - 1].arrival;
+          if (p.isTraveling && p.segments && p.segments?.length > 0) {
+            const finalArrival = p.segments?.[p.segments?.length - 1]?.arrival;
 
-            // Hvis klokken er passeret ankomsttiden
-            if (nextTime >= finalArrival || (finalArrival > 1400 && nextTime < 100)) {
-
-              // TJEK OM NOGEN HAR VUNDET:
-              // Hvis byen de ankommer til er mål-byen, så har vi en vinder!
-
+            // FIX: Vi tjekker om spiltiden er nået ELLER passeret ankomst
+            // Vi bruger en buffer på 0.1 for at undgå afrundingsfejl
+            if (nextTime >= (finalArrival - 0.1)) {
               if (p.destinationCity === cur.goalCity) winnerFound = p;
-              return { ...p, isTraveling: false, currentCity: p.destinationCity, segments: null, travelType: null };
+              return {
+                ...p,
+                isTraveling: false,
+                currentCity: p.destinationCity,
+                segments: null,
+                travelType: null
+              };
             }
           }
           return p;
@@ -984,11 +1010,11 @@ export default function App() {
           id: user.uid,
           name: playerName || "Rejsende",
           avatar: playerAvatar,
-          color: playerColor, // <--- GEMMER FARVEN HER
-          currentCity: "København",
+          color: playerColor,
+          currentCity: "København", // Eller din startby
           money: 5000,
           isTraveling: false,
-          inventory: [],
+          history: [], // <--- TILFØJ DENNE LINJE
           lastUpdate: Date.now()
         });
 
@@ -1052,11 +1078,22 @@ export default function App() {
     const me = gameState.players.find(p => p.id === user.uid);
     if (!me || me.isTraveling || me.money < dep.cost) return;
 
-    // 1. Beregn segmenter
     const segments = [];
     let startTime = dep.time;
-    const lineData = TRANSIT_LINES.find(l => l.name === dep.lineName);
 
+    // 1. FIND DEN RIGTIGE LINJE (Selvom mange hedder "RE")
+    // Vi prioriterer: 1. Navn + Byer, 2. Kun Navn, 3. Fallback objekt
+    const lineData = TRANSIT_LINES.find(l =>
+    l.name === dep.lineName &&
+    l.cities?.includes(dep.route[0]) &&
+    l.cities?.includes(dep.route[dep.route.length - 1])
+    ) || TRANSIT_LINES.find(l => l.name === dep.lineName) || {
+      id: dep.lineName || "RE",
+      path: [],
+      color: '#64748b'
+    };
+
+    // 2. BEREGN SEGMENTER
     for (let i = 0; i < dep.route.length - 1; i++) {
       const fromCity = dep.route[i];
       const toCity = dep.route[i + 1];
@@ -1067,9 +1104,10 @@ export default function App() {
 
       let segmentPath = [pos1, pos2];
 
-      if (lineData && lineData.path) {
-        const idx1 = lineData.path.findIndex(p => Math.abs(p[0]-pos1[0]) < 0.0001 && Math.abs(p[1]-pos1[1]) < 0.0001);
-        const idx2 = lineData.path.findIndex(p => Math.abs(p[0]-pos2[0]) < 0.0001 && Math.abs(p[1]-pos2[1]) < 0.0001);
+      // Find path i den valgte linje (med tolerance for koordinater)
+      if (lineData.path && lineData.path.length > 0) {
+        const idx1 = lineData.path.findIndex(p => p && Math.abs(p[0] - pos1[0]) < 0.001 && Math.abs(p[1] - pos1[1]) < 0.001);
+        const idx2 = lineData.path.findIndex(p => p && Math.abs(p[0] - pos2[0]) < 0.001 && Math.abs(p[1] - pos2[1]) < 0.001);
 
         if (idx1 !== -1 && idx2 !== -1) {
           segmentPath = idx1 < idx2
@@ -1079,88 +1117,61 @@ export default function App() {
       }
 
       const dist = getDist(pos1, pos2);
-      const config = TRAVEL_TYPES[dep.type] || TRAVEL_TYPES.bus;
+      const config = TRAVEL_TYPES[dep.type] || TRAVEL_TYPES.train || { speed: 80 };
       const duration = (dist / config.speed) * 60;
 
       segments.push({
         from: fromCity,
         to: toCity,
-        departure: startTime,
-        arrival: startTime + duration,
-        // FIX: Gem arrayet som en streng for at undgå Nested Array fejlen
-        pathData: JSON.stringify(segmentPath)
+        departure: Number(startTime),
+                    arrival: Number(startTime + duration),
+                    pathData: JSON.stringify(segmentPath),
+                    // Vi sikrer os at lineId er en streng og aldrig undefined
+                    lineId: String(lineData.id || lineData.name || dep.lineName || "RE")
       });
 
       startTime += duration + STOP_DURATION;
     }
 
-    // 2. Opdater Firebase (Brug gameState.code og den rigtige session-sti)
+    // 3. OPDATER FIREBASE (Atomic Update)
     try {
       const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+
+      const newHistoryItem = {
+        type: dep.type || 'train',
+        from: me.currentCity,
+        to: dep.destination,
+        line: dep.lineName || 'RE',
+        time: Number(gameState.gameTime)
+      };
 
       const updatedPlayers = gameState.players.map(p =>
       p.id === user.uid ? {
         ...p,
         isTraveling: true,
         destinationCity: dep.destination,
-        segments,
-        money: p.money - dep.cost,
-        travelType: dep.type
+        segments: segments,
+        money: Number(p.money - dep.cost),
+                                                   lastTicketPrice: Number(dep.cost),
+                                                   travelType: dep.type,
+                                                   history: [...(p.history || []), newHistoryItem]
       } : p
       );
 
       await updateDoc(sessionRef, { players: updatedPlayers });
 
     } catch (error) {
-      console.error("Kunne ikke starte rejsen:", error);
+      console.error("KRITISK FEJL i travel:", error);
     }
   };
-  const cancelTravel = async () => {
-    const me = gameState.players.find(p => p.id === user.uid);
-    if (!me) return;
-
-    // Optimistic rollback: Vi fjerner rejsestatus lokalt med det samme
-    setGameState(prev => ({
-      ...prev,
-      players: prev.players.map(p => p.id === user.uid ? {
-        ...p,
-        isTraveling: false,
-        segments: [],
-        destinationCity: null
-      } : p)
-    }));
-
-    try {
-      const playerRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
-
-      // Vi finder den specifikke afgangspris for at give pengene tilbage (valgfrit)
-      // Hvis du vil være flink, kan du refundere pengene her.
-
-      const updatedPlayers = gameState.players.map(p =>
-      p.id === user.uid ? {
-        ...p,
-        isTraveling: false,
-        segments: [],
-        destinationCity: null,
-        // Vi beholder currentCity som den er
-      } : p
-      );
-
-      await updateDoc(playerRef, { players: updatedPlayers });
-    } catch (error) {
-      console.error("Fejl ved afbrydelse af rejse:", error);
-      listen(gameState.code); // Rul tilbage ved fejl
-    }
-  };
-
   const handleStepOffNextStation = async () => {
     if (!currentPlayer || !currentPlayer.segments) return;
     // Find det nuværende eller næste segment
-    const currentSegIdx = currentPlayer.segments.findIndex(s => interpolatedTime <= s.arrival);
+    const currentSegIdx = currentPlayer.segments?.findIndex(s => interpolatedTime <= s.arrival);
     if (currentSegIdx === -1) return;
 
     // Afkort rejsen til at slutte ved næste stop
-    const newSegments = currentPlayer.segments.slice(0, currentSegIdx + 1);
+    const newSegments = currentPlayer.segments?.slice(0, currentSegIdx + 1);
     const nextCity = newSegments[currentSegIdx].to;
 
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
@@ -1200,6 +1211,7 @@ export default function App() {
     const now = gameState.gameTime;
 
     TRANSIT_LINES.forEach(line => {
+      // Vi tjekker transporttype (tog/bus/fly)
       if (line.type !== activeTab) return;
 
       const myIndex = line.cities.indexOf(me.currentCity);
@@ -1211,6 +1223,13 @@ export default function App() {
                           { destinations: line.cities.slice(0, myIndex).reverse(), label: "mod " + line.cities[0] }
       ];
 
+      // FIND STILEN HER (Før loopet for at spare performance)
+      // Vi kigger først efter kategorien (f.eks. "DK_Regional_Train")
+      // Hvis den ikke findes, kigger vi efter linjenavnet.
+      const currentStyle = CATEGORY_STYLE[line.category] ||
+      CATEGORY_STYLE[line.name] ||
+      { label: line.name.slice(0, 2), color: line.color || "#64748b" };
+
       directions.forEach((dir, dirIndex) => {
         if (dir.destinations.length === 0) return;
 
@@ -1219,17 +1238,15 @@ export default function App() {
         const directionOffset = dirIndex === 1 ? gap / 2 : 0;
         let nextDep = (line.firstDeparture || 0) + directionOffset;
 
-        // Find start-tidspunktet for loopet
         while (nextDep <= now) nextDep += gap;
         nextDep -= gap;
 
-        for (let i = 0; i < 8; i++) { // Vis de næste 8 afgange
+        for (let i = 0; i < 8; i++) {
           const baseTime = nextDep + (i * gap);
           if (baseTime <= now) continue;
           if (baseTime >= 1440) break;
 
-          // --- NY LOGIK: DETERMINISTISK TILFÆLDIGHED ---
-          // Vi genererer en "seed" baseret på linjen og tiden, så det er ens for alle spillere
+          // DETERMINISTISK TILFÆLDIGHED (Seed baseret på linje + tid)
           const seedStr = line.name + baseTime + finalGoal;
           let hash = 0;
           for (let j = 0; j < seedStr.length; j++) {
@@ -1238,31 +1255,28 @@ export default function App() {
           }
           const r = Math.abs(hash);
 
-          // 1. Risiko for aflysning (standard 3% hvis ikke defineret på linjen)
+          // 1. Risiko for aflysning
           const isCancelled = (r % 100) < (line.cancelRisk || 3);
 
-          // 2. Variabel forsinkelse (sker for ca. 15% af afgangene)
+          // 2. Variabel forsinkelse
           let delay = 0;
           if ((r % 100) < (line.delayRisk || 15)) {
-            // Forsinkelsen er mellem 2 og 45 minutter
             delay = (r % 40) + 5;
           }
 
-          const currentStyle = CATEGORY_STYLE[line.category] || { label: "??", bg: "bg-slate-500" };
-
           list.push({
             id: `${line.name}-${baseTime}-${dirIndex}`,
-            lineName: line.name,
-            category: line.category,
-            destination: finalGoal,
-            directionLabel: dir.label,
-            allStops: dir.destinations,
-            time: baseTime,
-            actualTime: baseTime + delay, // Den tid spilleren ser
-            delay: delay,
-            isCancelled: isCancelled,
-            type: line.type,
-            style: currentStyle
+            lineName: line.name, // Dette er det unikke navn (f.eks. "RE 1234")
+          category: line.category,
+          destination: finalGoal,
+          directionLabel: dir.label,
+          allStops: dir.destinations,
+          time: baseTime,
+          actualTime: baseTime + delay,
+          delay: delay,
+          isCancelled: isCancelled,
+          type: line.type,
+          style: currentStyle // Dette indeholder nu det rigtige label (f.eks. "RE")
           });
         }
       });
@@ -1287,21 +1301,82 @@ export default function App() {
 
   if (gameState?.status === 'finished') {
     return (
-      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 space-y-8">
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center py-12 px-6 overflow-y-auto">
+      <div className="max-w-md w-full space-y-8">
+      {/* TOP SEKTION: TROFÆ OG NAVN */}
       <div className="text-center space-y-4">
-      <Trophy size={120} className="text-amber-400 mx-auto animate-bounce" />
-      <h1 className="text-6xl font-black italic">VINDER FUNDET!</h1>
-      <div className="bg-white/10 p-8 rounded-[40px] border border-white/20">
+      <Trophy size={100} className="text-amber-400 mx-auto animate-bounce" />
+      <h1 className="text-6xl font-black italic tracking-tighter">VINDER FUNDET!</h1>
+
+      <div className="bg-white/10 p-8 rounded-[40px] border border-white/20 shadow-2xl">
       <div className="text-8xl mb-4">{gameState.winner?.avatar}</div>
-      <div className="text-3xl font-black uppercase text-blue-400">{gameState.winner?.name}</div>
-      <p className="text-slate-400 uppercase tracking-widest mt-2">Nåede først til {gameState.goalCity}</p>
+      <div className="text-3xl font-black uppercase text-blue-400 leading-none">
+      {gameState.winner?.name}
+      </div>
+      <p className="text-slate-400 uppercase tracking-widest mt-2 text-sm">
+      Nåede først til {gameState.goalCity}
+      </p>
       </div>
       </div>
-      <button onClick={() => window.location.reload()} className="bg-blue-600 px-12 py-4 rounded-full font-black uppercase hover:scale-105 transition-transform">Spil Igen</button>
+
+      {/* REJSE GENNEMGANG (DEN NYE DEL) */}
+      <div className="bg-white/5 border border-white/10 rounded-[32px] p-6 space-y-6">
+      <h3 className="text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500 border-b border-white/5 pb-4">
+      Vinderens Rejsejournal
+      </h3>
+
+      <div className="space-y-0">
+      {gameState.winner?.history?.map((step, i) => {
+        const TransportIcon = TRAVEL_TYPES[step.type]?.icon || Bus;
+        return (
+          <div key={i} className="flex gap-4 group">
+          {/* Tidslinje-streg og ikon */}
+          <div className="flex flex-col items-center">
+          <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+          <TransportIcon size={20} />
+          </div>
+          <div className="w-0.5 h-10 bg-gradient-to-b from-white/20 to-transparent" />
+          </div>
+
+          {/* Detaljer om ruten */}
+          <div className="flex-1 pt-1">
+          <div className="flex justify-between items-baseline">
+          <div className="font-bold text-lg">{step.from} → {step.to}</div>
+          <div className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-slate-400">
+          {Math.floor(step.time / 60).toString().padStart(2, '0')}:{(step.time % 60).toString().padStart(2, '0')}
+          </div>
+          </div>
+          <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">
+          {TRAVEL_TYPES[step.type]?.label} • {step.line}
+          </div>
+          </div>
+          </div>
+        );
+      })}
+
+      {/* Slutdestination */}
+      <div className="flex gap-4">
+      <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+      <Flag size={20} className="text-white" />
+      </div>
+      <div className="flex-1 pt-2">
+      <div className="font-black text-green-400 uppercase italic">I mål: {gameState.goalCity}</div>
+      </div>
+      </div>
+      </div>
+      </div>
+
+      {/* RESTART KNAP */}
+      <button
+      onClick={() => window.location.reload()}
+      className="w-full bg-blue-600 py-6 rounded-3xl font-black uppercase text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-blue-600/20"
+      >
+      Spil Igen
+      </button>
+      </div>
       </div>
     );
   }
-
 
   // --- C. HOVEDMENU (Start skærm) ---
 
@@ -1756,7 +1831,7 @@ export default function App() {
   const currentCityData = CITIES[currentPlayer.currentCity];
 
   // >>> SÆT DENNE BLOK IND HER <<<
-  if (currentPlayer.isTraveling && (!currentPlayer.segments || currentPlayer.segments.length === 0)) {
+  if (currentPlayer.isTraveling && (!currentPlayer.segments || currentPlayer.segments?.length === 0)) {
     return (
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
       <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
@@ -1765,6 +1840,7 @@ export default function App() {
     );
   }
   // >>> SLUT PÅ BLOK <<<
+
 
   return (
     <div className="h-screen bg-black flex flex-col text-white font-mono select-none overflow-hidden">
@@ -1791,10 +1867,14 @@ export default function App() {
     {currentPlayer.isTraveling ? (
       <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in zoom-in duration-500 overflow-y-auto font-sans select-none">
       {(() => {
-        // Find den rute spilleren aktuelt er på for at få farve og navn
+        // 1. Find aktiv rute (Sikkerhed mod undefined)
         const activeRoute = TRANSIT_LINES.find(line =>
         line.id === currentPlayer?.segments?.[0]?.lineId
         ) || { color: '#2563eb', name: 'Europa Express', label: 'EX' };
+
+        // 2. Hent ankomsttid for fejlfinding
+        const finalArrival = currentPlayer.segments?.[currentPlayer.segments?.length - 1]?.arrival;
+        const isActuallyArrived = interpolatedTime > finalArrival;
 
         return (
           <>
@@ -1810,7 +1890,7 @@ export default function App() {
           </div>
 
           <div className="p-6 pt-8">
-          {/* Billet Header - NU MED ROUTE LABEL I HØJRE SIDE */}
+          {/* Header */}
           <div className="flex justify-between items-center mb-7 pb-4 border-b border-slate-100">
           <div>
           <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1">Boarding Pass</p>
@@ -1818,21 +1898,18 @@ export default function App() {
           {activeRoute.name}
           </h2>
           </div>
-
-          {/* RUTELABEL (ERSTATTER IKONET) */}
           <div className="px-5 py-2 rounded-2xl border font-black text-xl text-white tracking-tighter shadow-md"
           style={{ backgroundColor: activeRoute.color, borderColor: `${activeRoute.color}cc` }}>
           {activeRoute.label}
           </div>
           </div>
 
-          {/* Rute Info (Fra -> Til) */}
+          {/* Rute Info */}
           <div className="flex justify-between items-center mb-10 px-1">
           <div className="text-left">
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Origin</p>
-          <p className="text-xl font-black">{currentPlayer.segments[0].from}</p>
+          <p className="text-xl font-black">{currentPlayer.segments?.[0]?.from || '...'}</p>
           </div>
-
           <div className="flex-1 px-4 flex flex-col items-center">
           <div className="w-full border-t-2 border-dashed border-slate-200 relative">
           <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white px-2">
@@ -1842,21 +1919,17 @@ export default function App() {
           </div>
           </div>
           </div>
-
           <div className="text-right">
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Destination</p>
           <p className="text-xl font-black">{currentPlayer.destinationCity}</p>
           </div>
           </div>
 
-          {/* HORISONTAL PROGRESS BAR MED AUTO-SCROLL */}
+          {/* HORISONTAL PROGRESS BAR */}
           <div className="mb-10 bg-slate-50 p-4 rounded-xl border border-slate-100 relative shadow-inner">
-          <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-50 to-transparent z-10 pointer-events-none" />
-          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-50 to-transparent z-10 pointer-events-none" />
-
           <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-8 pt-6 px-10">
           <div className="flex items-center min-w-max">
-          {currentPlayer.segments.map((seg, idx) => {
+          {currentPlayer.segments?.map((seg, idx) => {
             const isPast = interpolatedTime > seg.arrival;
             const isCurrentSegment = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
 
@@ -1896,7 +1969,7 @@ export default function App() {
 
           {/* STREGKODE */}
           <div className="border-t-2 border-slate-100 pt-6 flex flex-col items-center">
-          <div className="flex gap-[2px] h-10 mb-2 overflow-hidden w-full justify-center">
+          <div className="flex gap-[2px] h-10 mb-2 overflow-hidden w-full justify-center opacity-30">
           {[...Array(40)].map((_, i) => (
             <div key={i} className={`bg-slate-900 ${Math.random() > 0.4 ? 'w-[1px]' : 'w-[3px]'}`} />
           ))}
@@ -1907,7 +1980,6 @@ export default function App() {
           </div>
           </div>
 
-          {/* Riflet kant bund */}
           <div className="absolute -bottom-1 left-0 right-0 flex justify-around px-2 pointer-events-none">
           {[...Array(8)].map((_, i) => (
             <div key={i} className="w-5 h-5 bg-slate-950 rounded-full -mb-3 shadow-inner" />
@@ -1915,18 +1987,34 @@ export default function App() {
           </div>
           </div>
 
-          {/* HANDLINGER */}
-          <div className="mt-10 flex flex-col gap-3 w-full max-w-sm px-4">
-          <button
-          onClick={handleStepOffNextStation}
-          className="w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 text-white transition-all active:scale-95 shadow-lg shadow-blue-900/20"
-          style={{ backgroundColor: activeRoute.color }}
-          >
-          <LogOut size={18} /> STÅ AF VED NÆSTE STOP
-          </button>
-          <button onClick={cancelTravel} className="w-full py-3 text-red-500 font-bold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-500/10 rounded-xl transition-all">
-          <XCircle size={14} /> Afbryd rejsen helt ({currentPlayer?.lastTicketPrice || 0}€ retur)
-          </button>
+          {/* DEBUG KONTROLPANEL - SÅ VI KAN FINDE FEJLEN */}
+          <div className="mt-8 w-full max-w-sm p-4 bg-black/40 border border-white/10 rounded-xl font-mono text-[10px]">
+          <div className="flex justify-between items-center mb-2">
+          <span className="text-blue-400 font-bold uppercase">System Status</span>
+          <span className={isActuallyArrived ? "text-red-400 animate-pulse" : "text-green-400"}>
+          {isActuallyArrived ? "ANKOMMET (VENTER PÅ SYNC)" : "REJSER..."}
+          </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-slate-400">
+          <p>Spil-tid: <span className="text-white">{Math.floor(interpolatedTime)}</span></p>
+          <p>Ankomst: <span className="text-white">{finalArrival || 'N/A'}</span></p>
+          <p>Segments: <span className="text-white">{currentPlayer.segments?.length || 0}</span></p>
+          <p>Buffer: <span className="text-white">{(interpolatedTime - finalArrival).toFixed(1)}</span></p>
+          </div>
+
+          {isActuallyArrived && (
+            <button
+            onClick={async () => {
+              const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+              await updateDoc(sessionRef, {
+                players: gameState.players.map(p => p.id === user.uid ? { ...p, isTraveling: false, segments: null } : p)
+              });
+            }}
+            className="mt-4 w-full py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded uppercase font-black"
+            >
+            Tving ankomst (Nulstil)
+            </button>
+          )}
           </div>
           </>
         );
@@ -2128,12 +2216,8 @@ export default function App() {
               const now = interpolatedTime;
 
               return allDepartures.map(dep => {
-                const style = CATEGORY_STYLE[dep.category] || { bg: "bg-slate-700", text: "text-white" };
-
-                // Tjek om toget er kørt (vi bruger den forventede tid inkl. forsinkelse)
+                const style = dep.style;
                 const hasDeparted = (dep.time + dep.delay) <= now;
-
-                // Hvis toget er kørt, fjerner vi det efter 15 minutter
                 if (hasDeparted && now - (dep.time + dep.delay) > 15) return null;
 
                 const viaStops = dep.allStops ? dep.allStops.slice(0, -1) : [];
@@ -2150,8 +2234,7 @@ export default function App() {
                   }`}
                   >
                   <div className="flex items-center gap-4 text-left flex-1 min-w-0">
-
-                  {/* TIDSPUNKT (LED Look) */}
+                  {/* TIDSPUNKT */}
                   <div className="flex flex-col w-14 items-start shrink-0 led-font">
                   <span className={`text-2xl tabular-nums leading-none ${
                     dep.isCancelled ? 'text-slate-600 line-through' :
@@ -2167,16 +2250,19 @@ export default function App() {
                   )}
                   </div>
 
-                  {/* LINJE LABEL */}
-                  <div className={`h-6 px-3 min-w-[40px] led-font rounded-sm flex items-center justify-center shrink-0 text-sm uppercase ${
+                  {/* LINJE LABEL (Tavle-visning) */}
+                  <div
+                  className={`h-6 px-3 min-w-[40px] led-font rounded-sm flex items-center justify-center shrink-0 text-sm uppercase shadow-md shadow-black/50 transition-all ${
                     dep.isCancelled || hasDeparted
                     ? 'bg-slate-800 text-slate-600 grayscale opacity-50'
-                : `${style.bg} ${style.text || 'text-white'} shadow-md shadow-black/50`
-                  }`}>
-                  {dep.lineName}
+                : `${style.bg || ''} ${style.text || 'text-white'}`
+                  }`}
+                  style={(!dep.isCancelled && !hasDeparted && style.color && !style.bg?.startsWith('bg-')) ? { backgroundColor: style.color } : {}}
+                  >
+                  {style.label}
                   </div>
 
-                  {/* DESTINATION & INFO */}
+                  {/* DESTINATION */}
                   <div className="flex flex-col flex-1 min-w-0 pr-4">
                   <div className={`font-black font-sans uppercase text-sm truncate tracking-tight ${
                     dep.isCancelled ? 'text-slate-600 line-through' :
@@ -2185,7 +2271,7 @@ export default function App() {
                   {dep.directionLabel}
                   </div>
 
-                  {/* STATUS LINJE */}
+                  {/* STATUS / VIA */}
                   {dep.isCancelled ? (
                     <div className="text-[10px] text-red-500 font-black uppercase tracking-widest flex items-center gap-1 animate-pulse font-sans">
                     <AlertTriangle size={10} /> Aflyst
@@ -2211,7 +2297,6 @@ export default function App() {
                   )}
                   </div>
                   </div>
-
                   {!hasDeparted && !dep.isCancelled && (
                     <ChevronRight size={14} className="text-slate-600 group-hover:text-blue-500 shrink-0 transition-colors" />
                   )}
@@ -2222,8 +2307,8 @@ export default function App() {
             </div>
           ) : (
             /* ================== STOP-VÆLGER OVERLAY ================== */
-            <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-6 bg-slate-900 border-b border-white/10 flex justify-between items-start font-sans">
+            <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300 font-sans">
+            <div className="p-6 bg-slate-900 border-b border-white/10 flex justify-between items-start">
             <div>
             <button
             onClick={() => setSelectedDeparture(null)}
@@ -2231,10 +2316,31 @@ export default function App() {
             >
             <RotateCcw size={12} /> Tilbage til tavlen
             </button>
-            <div className="text-2xl font-black italic uppercase tracking-tighter text-white">
-            {selectedDeparture.lineName} {selectedDeparture.directionLabel}
+
+            <div className="flex items-center gap-3">
+            {/* Farvet Label Boks med Tailwind & Hex Support */}
+            <div
+            className={`px-3 py-1 rounded-sm text-white text-sm font-black uppercase flex items-center gap-2 shadow-lg led-font ${
+              selectedDeparture.style?.bg?.startsWith('bg-') ? selectedDeparture.style.bg : ''
+            }`}
+            style={{
+              backgroundColor: (!selectedDeparture.style?.bg?.startsWith('bg-'))
+              ? (selectedDeparture.style?.color || '#334155')
+              : undefined
+            }}
+            >
+            {selectedDeparture.style?.label}
+            </div>
+
+            <div className="flex items-baseline gap-2">
+            <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest italic"></span>
+            <div className="text-2xl font-black italic uppercase tracking-tighter text-white leading-none">
+            {selectedDeparture.directionLabel}
             </div>
             </div>
+            </div>
+            </div>
+
             <div className="text-right">
             <div className={`font-black text-xl tabular-nums ${selectedDeparture.delay > 0 ? 'text-red-500' : 'text-blue-500'}`}>
             kl. {formatTime(selectedDeparture.time + selectedDeparture.delay)}
@@ -2243,7 +2349,7 @@ export default function App() {
             </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 font-sans">
+            <div className="flex-1 overflow-y-auto p-6">
             <div className="relative border-l-2 border-blue-500/20 ml-3 pl-8 space-y-6">
             {selectedDeparture.allStops.map((stopCity) => {
               const info = calculateStopInfo(selectedDeparture, stopCity, currentPlayer.currentCity);
@@ -2276,10 +2382,8 @@ export default function App() {
                 Ankomst ca. {formatTime(selectedDeparture.time + selectedDeparture.delay + info.duration)}
                 </div>
                 </div>
-                <div className="text-right">
-                <div className={`font-black text-lg ${hasMoney ? 'text-green-500' : 'text-red-500'}`}>
-                {info.price}€
-                </div>
+                <div className="text-right font-black text-lg">
+                <span className={hasMoney ? 'text-green-500' : 'text-red-500'}>{info.price}€</span>
                 </div>
                 </div>
                 </div>
