@@ -1,4 +1,3 @@
-// cities.js
 export const CITIES = {
     "Aakirkeby": { pos: [55.07229, 14.91338], country: "DK", hub: false, station: null, bus: "Aakirkeby Terminalen", ferry: null, airport: null, category: "DK_Bornholm" },
     "Allinge": { pos: [55.27662, 14.80152], country: "DK", hub: false, station: null, bus: "Allinge Station (Bus)", ferry: "Allinge Havn", airport: null, category: "DK_Bornholm" },

@@ -1,4 +1,3 @@
-// Farver og navne på specifikke operatører (f.eks. DSB eller FlixBus)
 export const CATEGORY_STYLE = {
   // --- AIRLINES ---
   "scandinavian_airlines": { label: "SAS", bg: "bg-blue-800", text: "text-white", showNumber: true },

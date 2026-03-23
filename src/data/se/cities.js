@@ -1,4 +1,3 @@
-// cities.js
 export const CITIES = {
   "Malmö C": { pos: [55.60944, 13.00234], country: "SE", hub: true, station: "Malmö Centralstation", bus: "Malmö Central", ferry: "Malmö Hamn", airport: null, category: "SE_Skåne" },
   "Triangeln": { pos: [55.59325, 13.00105], country: "SE", hub: false, station: "Triangeln Station", bus: "Malmö Triangeln", ferry: null, airport: null, category: "SE_Skåne" },
