@@ -26,6 +26,7 @@ export const CATEGORY_STYLE = {
   "molslinjen": { label: "MOLS", bg: "bg-blue-900", text: "text-white", showNumber: false },
   "scandlines": { label: "SL", bg: "bg-yellow-400", text: "text-blue-900", showNumber: false },
   "bornholmslinjen": { label: "BHL", bg: "bg-emerald-900", text: "text-white", showNumber: false },
+  "hundested_rørvig": { label: "HR", bg: "bg-red-600", text: "text-white", showNumber: true },
 
   // --- KBH METRO ---
   "KBH_METRO_M1": { label: "M1", bg: "bg-emerald-600", text: "text-white", showNumber: false },
@@ -52,4 +53,7 @@ export const CATEGORY_STYLE = {
   "DK_S-Train_E": { label: "E", bg: "bg-violet-500", text: "text-white", showNumber: false },
   "DK_S-Train_F": { label: "F", bg: "bg-yellow-400", text: "text-white", showNumber: false },
   "DK_S-Train_H": { label: "H", bg: "bg-red-600", text: "text-white", showNumber: true },
+
+  // --- UGRUPPERET ---
+
 };
