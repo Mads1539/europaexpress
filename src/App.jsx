@@ -2172,6 +2172,49 @@ export default function App() {
         {CITIES[currentPlayer.currentCity]?.type || 'Storby'}
         </p>
         </div>
+        {(() => {
+          const city = CITIES[currentPlayer.currentCity];
+          const citySize = city?.size;
+          const sizeConfig = {
+            metropolis: { label: 'huge', color: 'text-purple-300', dot: 'bg-purple-400', dots: 4 },
+            large:      { label: 'large',   color: 'text-blue-300',   dot: 'bg-blue-400',   dots: 3 },
+            medium:     { label: 'medium', color: 'text-cyan-300', dot: 'bg-cyan-400', dots: 2 },
+            small:      { label: 'small', color: 'text-slate-300',  dot: 'bg-slate-400',  dots: 1 },
+          };
+          const cfg = sizeConfig[citySize];
+          if (!cfg) return null;
+          return (
+            <div className="bg-black/20 p-3 rounded-2xl border border-white/5">
+            <p className="text-[8px] text-slate-500 uppercase font-bold mb-1">Bystørrelse</p>
+            <div className="flex items-center gap-2">
+            <div className="flex gap-0.5">
+            {[1,2,3,4].map(i => (
+              <div key={i} className={`w-2 h-2 rounded-full ${i <= cfg.dots ? cfg.dot : 'bg-white/10'}`} />
+            ))}
+            </div>
+            <p className={`font-mono text-sm uppercase tracking-tight ${cfg.color}`}>{cfg.label}</p>
+            </div>
+            </div>
+          );
+        })()}
+        {(() => {
+          const city = CITIES[currentPlayer.currentCity];
+          const parentCity = city?.parent;
+          if (!parentCity) return null;
+          const parentData = CITIES[parentCity];
+          return (
+            <div className="bg-black/20 p-3 rounded-2xl border border-white/5">
+            <p className="text-[8px] text-slate-500 uppercase font-bold mb-1">Tilhører</p>
+            <div className="flex items-center gap-1.5">
+            <MapPin size={11} className="text-amber-400 shrink-0" />
+            <p className="font-mono text-sm text-amber-300 uppercase tracking-tight truncate">{parentCity}</p>
+            </div>
+            {parentData?.country && (
+              <p className="text-[9px] text-slate-500 mt-0.5">{parentData.country}</p>
+            )}
+            </div>
+          );
+        })()}
         </div>
 
         <p className="text-xs text-slate-300 leading-relaxed italic opacity-80 px-1">
