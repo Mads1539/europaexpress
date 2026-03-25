@@ -147,7 +147,7 @@ export const TRANSIT_LINES = [
 {
     name: "5494223272",
     number: "930R",
-    type: "bus",
+    type: "train",
     color: "#001233",
     category: "lokaltog",
     frequency: 36,

@@ -91,7 +91,7 @@ const INCIDENT_TYPES = [
 const AVATARS = ["👨🏼‍💼", "👩🏼‍💼", "👨🏼‍✈️", "👩🏼‍✈️", "👨🏼‍🚀", "👩🏼‍🚀"];
 
 // Hvor mange minutter man holder stille i en by
-const STOP_DURATION = 2;
+const STOP_DURATION = 1;
 
 
 // =========================================================================
@@ -807,12 +807,28 @@ export default function App() {
             }
           }
 
-          // Interpolation langs stien
+          // Afstandsbaseret interpolation langs stien (konstant hastighed)
           if (finalPath && finalPath.length > 1) {
-            const numSegments = finalPath.length - 1;
-            const subProg = prog * numSegments;
-            const idx = Math.floor(subProg);
-            const segmentProg = subProg - idx;
+            // Byg en tabel over kumulative afstande langs stien
+            const cumDist = [0];
+            for (let i = 1; i < finalPath.length; i++) {
+              const a = finalPath[i - 1];
+              const b = finalPath[i];
+              const dLat = b[0] - a[0];
+              const dLon = b[1] - a[1];
+              cumDist.push(cumDist[i - 1] + Math.sqrt(dLat * dLat + dLon * dLon));
+            }
+            const totalDist = cumDist[cumDist.length - 1];
+            const targetDist = prog * totalDist;
+
+            // Find det segment hvor targetDist befinder sig
+            let idx = 0;
+            for (let i = 1; i < cumDist.length; i++) {
+              if (cumDist[i] >= targetDist) { idx = i - 1; break; }
+              idx = i - 1;
+            }
+            const segLen = cumDist[idx + 1] - cumDist[idx];
+            const segmentProg = segLen > 0 ? (targetDist - cumDist[idx]) / segLen : 0;
             const p1 = finalPath[idx];
             const p2 = finalPath[idx + 1] || p1;
             pos = [p1[0] + (p2[0] - p1[0]) * segmentProg, p1[1] + (p2[1] - p1[1]) * segmentProg];

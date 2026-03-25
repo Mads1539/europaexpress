@@ -4,7 +4,7 @@ import { denmarkData } from './dk/index.js';
 import { swedenData } from './se/index.js';
 
 export const COUNTRY_DATA = {
-    AIR: airData
+    AIR: airData,
     DK: denmarkData,
     SE: swedenData,
 };
