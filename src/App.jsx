@@ -69,9 +69,9 @@ const appId = 'europa-express-9eedf';
 // Her styrer du hvad det koster at rejse og hvor lang tid det tager per stop
 const TRAVEL_TYPES = {
   "bus": { speed: 70, baseCost: 20, costPerKm: 0.5, icon: Bus, label: "Bus", prefix: "FLX" },
-  "train": { speed: 150, baseCost: 100, costPerKm: 1.2, icon: Train, label: "Tog", prefix: "IC" },
-  "flight": { speed: 800, baseCost: 500, costPerKm: 0.2, icon: Plane, label: "Fly", prefix: "SK" },
-  "ferry": { speed: 30, baseCost: 150, costPerKm: 1.5, icon: Globe, label: "Færge", prefix: "LINE" }
+  "train": { speed: 150, baseCost: 50, costPerKm: 1.2, icon: Train, label: "Tog", prefix: "IC" },
+  "flight": { speed: 600, baseCost: 1000, costPerKm: 0.2, icon: Plane, label: "Fly", prefix: "SK" },
+  "ferry": { speed: 30, baseCost: 100, costPerKm: 1.5, icon: Globe, label: "Færge", prefix: "LINE" }
 };
 
 
@@ -1159,7 +1159,7 @@ export default function App() {
   };
 
   const travel = async (dep) => {
-    const me = gameState.players.find(p => p.id === playerID);
+    const me = gameState.players.find(p => p.id === playerId);
     if (!me || me.isTraveling || me.money < dep.cost) return;
 
     const segments = [];
@@ -2068,97 +2068,155 @@ export default function App() {
     {currentPlayer.isTraveling ? (
       <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in zoom-in duration-500 overflow-y-auto font-sans select-none">
       {(() => {
-        // 1. Find aktiv rute (Sikkerhed mod undefined)
+        const travelType = currentPlayer.travelType || currentPlayer.segments?.[0]?.type || 'train';
         const activeRoute = TRANSIT_LINES.find(line =>
         line.id === currentPlayer?.segments?.[0]?.lineId
         ) || { color: '#2563eb', name: 'Europa Express', label: 'EX' };
 
-        // 2. Hent ankomsttid for fejlfinding
         const finalArrival = currentPlayer.segments?.[currentPlayer.segments?.length - 1]?.arrival;
         const isActuallyArrived = interpolatedTime > finalArrival;
+        const departureTime = currentPlayer.segments?.[0]?.departure;
+        const fromCity = currentPlayer.segments?.[0]?.from || '...';
+        const toCity = currentPlayer.destinationCity || '...';
 
-        return (
-          <>
-          {/* DEN RIFLEDE BILLET */}
-          <div className="w-full max-w-sm bg-white text-slate-900 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] overflow-hidden relative border-t-[12px]"
-          style={{ borderTopColor: activeRoute.color }}>
+        // Transport-specifikke konfigurationer
+      const TICKET_CONFIG = {
+        walking: {
+          bg: 'bg-emerald-50',
+          accent: '#10b981',
+          accentLight: '#d1fae5',
+          textAccent: 'text-emerald-700',
+          borderColor: 'border-emerald-200',
+          label: '🚶 Gåben',
+          sublabel: 'Gå-kvittering',
+          icon: '🚶',
+          description: 'FODGÆNGER PASSAGE',
+          ticketStyle: 'walking',
+        },
+        taxi: {
+          bg: 'bg-amber-50',
+          accent: '#f59e0b',
+          accentLight: '#fef3c7',
+          textAccent: 'text-amber-700',
+          borderColor: 'border-amber-300',
+          label: '🚕 TAXA',
+          sublabel: 'Taxa Kvittering',
+          icon: '🚕',
+          description: 'TAXA SERVICE',
+          ticketStyle: 'taxi',
+        },
+        train: {
+          bg: 'bg-white',
+          accent: activeRoute.color,
+          accentLight: '#eff6ff',
+          textAccent: 'text-blue-700',
+          borderColor: 'border-slate-200',
+          label: `🚆 ${activeRoute.label}`,
+          sublabel: 'Togbillet',
+          icon: '🚆',
+          description: activeRoute.name?.toUpperCase() || 'INTERCITY',
+        ticketStyle: 'train',
+        },
+        bus: {
+          bg: 'bg-orange-50',
+          accent: '#ea580c',
+          accentLight: '#fff7ed',
+          textAccent: 'text-orange-700',
+          borderColor: 'border-orange-200',
+          label: `🚌 ${activeRoute.label || 'BUS'}`,
+          sublabel: 'Buskort / Klippekort',
+          icon: '🚌',
+          description: activeRoute.name?.toUpperCase() || 'FLEXBUS',
+        ticketStyle: 'bus',
+        },
+        flight: {
+          bg: 'bg-sky-950',
+          accent: '#0ea5e9',
+          accentLight: '#0c4a6e',
+          textAccent: 'text-sky-300',
+          borderColor: 'border-sky-800',
+          label: `✈️ ${activeRoute.label || 'SK'}`,
+          sublabel: 'Boarding Pass',
+          icon: '✈️',
+          description: activeRoute.name?.toUpperCase() || 'EUROPA AIRWAYS',
+        ticketStyle: 'flight',
+        },
+        ferry: {
+          bg: 'bg-teal-50',
+          accent: '#0d9488',
+          accentLight: '#ccfbf1',
+          textAccent: 'text-teal-700',
+          borderColor: 'border-teal-200',
+          label: `⛴️ ${activeRoute.label || 'FÆRGE'}`,
+          sublabel: 'Færgebillet',
+          icon: '⛴️',
+          description: activeRoute.name?.toUpperCase() || 'SCANDLINES',
+        ticketStyle: 'ferry',
+        },
+      };
 
-          {/* Riflet kant top */}
-          <div className="absolute -top-1 left-0 right-0 flex justify-around px-2 pointer-events-none">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="w-5 h-5 bg-slate-950 rounded-full -mt-3 shadow-inner" />
-          ))}
-          </div>
+      const cfg = TICKET_CONFIG[travelType] || TICKET_CONFIG.train;
+      const isDark = travelType === 'flight';
 
-          <div className="p-6 pt-8">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-7 pb-4 border-b border-slate-100">
+      return (
+        <>
+        {/* ===== WALKING: Simpel grøn kvittering ===== */}
+        {cfg.ticketStyle === 'walking' && (
+          <div className="w-full max-w-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden border border-emerald-200 bg-emerald-50">
+          <div className="bg-emerald-600 px-6 py-4 flex items-center gap-3">
+          <span className="text-3xl">🚶</span>
           <div>
-          <p className="text-[10px] uppercase font-black text-slate-400 tracking-widest mb-1">Boarding Pass</p>
-          <h2 className="text-2xl font-black italic text-slate-900 leading-tight uppercase tracking-tighter">
-          {activeRoute.name}
-          </h2>
-          </div>
-          <div className="px-5 py-2 rounded-2xl border font-black text-xl text-white tracking-tighter shadow-md"
-          style={{ backgroundColor: activeRoute.color, borderColor: `${activeRoute.color}cc` }}>
-          {activeRoute.label}
+          <p className="text-emerald-100 text-[9px] font-black uppercase tracking-[0.3em]">Gå-kvittering</p>
+          <p className="text-white text-lg font-black uppercase tracking-tight">Fodgænger Passage</p>
           </div>
           </div>
-
-          {/* Rute Info */}
-          <div className="flex justify-between items-center mb-10 px-1">
-          <div className="text-left">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Origin</p>
-          <p className="text-xl font-black">{currentPlayer.segments?.[0]?.from || '...'}</p>
+          <div className="p-6 space-y-4">
+          <div className="flex justify-between">
+          <div>
+          <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest">Fra</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{fromCity}</p>
+          <p className="text-[10px] text-emerald-700 font-bold">{departureTime != null ? formatTime(departureTime) : '--:--'}</p>
           </div>
-          <div className="flex-1 px-4 flex flex-col items-center">
-          <div className="w-full border-t-2 border-dashed border-slate-200 relative">
-          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white px-2">
-          <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: activeRoute.color }}>
-          <ChevronRight size={14} className="text-white" />
+          <div className="flex flex-col items-center justify-center px-4">
+          <div className="flex gap-1">
+          {['🌿','🌿','🌿'].map((e,i) => <span key={i} className="text-sm">{e}</span>)}
           </div>
-          </div>
-          </div>
+          <div className="text-[8px] text-emerald-500 font-black uppercase mt-1">til fods</div>
           </div>
           <div className="text-right">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Destination</p>
-          <p className="text-xl font-black">{currentPlayer.destinationCity}</p>
+          <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest">Til</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{toCity}</p>
+          <p className="text-[10px] text-emerald-700 font-bold">{finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
           </div>
           </div>
-
-          {/* HORISONTAL PROGRESS BAR */}
-          <div className="mb-10 bg-slate-50 p-4 rounded-xl border border-slate-100 relative shadow-inner">
-          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-8 pt-6 px-10">
+          <div className="border-t border-dashed border-emerald-300 pt-4">
+          <div className="bg-emerald-100 rounded-xl p-3 text-center">
+          <p className="text-[8px] text-emerald-600 font-black uppercase tracking-widest">Pris</p>
+          <p className="text-2xl font-black text-emerald-700">GRATIS</p>
+          </div>
+          </div>
+          {/* Horisontal progress */}
+          <div className="bg-white p-3 rounded-xl border border-emerald-100">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-6 pt-4 px-6">
           <div className="flex items-center min-w-max">
           {currentPlayer.segments?.map((seg, idx) => {
             const isPast = interpolatedTime > seg.arrival;
-            const isCurrentSegment = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
-
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
             return (
               <React.Fragment key={idx}>
-              <div ref={isCurrentSegment ? currentStopRef : null} className="flex flex-col items-center relative">
-              <div className={`w-6 h-6 rounded-full border-4 transition-all duration-500 z-20 ${
-                isPast ? 'border-transparent' :
-                isCurrentSegment ? 'bg-white scale-125 shadow-xl animate-pulse' : 'bg-white border-slate-200'
-              }`}
-              style={{
-                backgroundColor: isPast ? activeRoute.color : 'white',
-                borderColor: isCurrentSegment ? activeRoute.color : (isPast ? 'transparent' : '#e2e8f0')
-              }} />
-              <span className={`text-[10px] font-black mt-2 absolute -bottom-6 whitespace-nowrap uppercase tracking-tight ${isCurrentSegment ? 'text-slate-900' : 'text-slate-400'}`}>
-              {seg.from}
-              </span>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-5 h-5 rounded-full border-4 z-20 transition-all"
+              style={{ backgroundColor: isPast ? '#10b981' : isCurr ? '#fff' : '#fff', borderColor: isCurr ? '#10b981' : isPast ? 'transparent' : '#d1fae5', transform: isCurr ? 'scale(1.3)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-emerald-700 uppercase">{seg.from}</span>
               </div>
-
-              <div className="relative w-20 h-[4px] bg-slate-200 -mx-1 z-10 rounded-full overflow-hidden">
-              <div className="absolute left-0 top-0 h-full transition-all duration-1000"
-              style={{ width: isPast ? '100%' : isCurrentSegment ? '50%' : '0%', backgroundColor: activeRoute.color }} />
+              <div className="relative w-16 h-[3px] bg-emerald-100 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full bg-emerald-500 transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%' }} />
               </div>
-
               {idx === currentPlayer.segments.length - 1 && (
                 <div className="flex flex-col items-center relative">
-                <div className="w-6 h-6 rounded-full border-4 border-slate-200 bg-white z-20" />
-                <span className="text-[10px] font-black mt-2 absolute -bottom-6 whitespace-nowrap uppercase tracking-tight text-slate-400">{seg.to}</span>
+                <div className="w-5 h-5 rounded-full border-4 border-emerald-200 bg-white z-20" />
+                <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-emerald-700 uppercase">{seg.to}</span>
                 </div>
               )}
               </React.Fragment>
@@ -2167,58 +2225,410 @@ export default function App() {
           </div>
           </div>
           </div>
+          </div>
+          </div>
+        )}
 
-          {/* STREGKODE */}
-          <div className="border-t-2 border-slate-100 pt-6 flex flex-col items-center">
-          <div className="flex gap-[2px] h-10 mb-2 overflow-hidden w-full justify-center opacity-30">
-          {[...Array(40)].map((_, i) => (
-            <div key={i} className={`bg-slate-900 ${Math.random() > 0.4 ? 'w-[1px]' : 'w-[3px]'}`} />
-          ))}
-          </div>
-          <p className="text-[8px] font-mono text-slate-400 tracking-[0.4em] uppercase">
-          {activeRoute.label}-{playerId.slice(0,12).toUpperCase()}
-          </p>
-          </div>
-          </div>
-
-          <div className="absolute -bottom-1 left-0 right-0 flex justify-around px-2 pointer-events-none">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="w-5 h-5 bg-slate-950 rounded-full -mb-3 shadow-inner" />
-          ))}
+        {/* ===== TAXI: Gul kvittering med taksameter-stil ===== */}
+        {cfg.ticketStyle === 'taxi' && (
+          <div className="w-full max-w-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden">
+          <div className="bg-amber-400 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+          <span className="text-3xl">🚕</span>
+          <div>
+          <p className="text-amber-800 text-[9px] font-black uppercase tracking-[0.3em]">Kvittering</p>
+          <p className="text-amber-950 text-lg font-black uppercase tracking-tight">Taxa Service</p>
           </div>
           </div>
-
-          {/* DEBUG KONTROLPANEL - SÅ VI KAN FINDE FEJLEN */}
-          <div className="mt-8 w-full max-w-sm p-4 bg-black/40 border border-white/10 rounded-xl font-mono text-[10px]">
-          <div className="flex justify-between items-center mb-2">
-          <span className="text-blue-400 font-bold uppercase">System Status</span>
-          <span className={isActuallyArrived ? "text-red-400 animate-pulse" : "text-green-400"}>
-          {isActuallyArrived ? "ANKOMMET (VENTER PÅ SYNC)" : "REJSER..."}
+          <div className="bg-amber-950 text-amber-400 px-3 py-1 rounded font-black text-xs uppercase tracking-widest font-mono">TAXA</div>
+          </div>
+          <div className="bg-amber-50 p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-xl p-3 border border-amber-100">
+          <p className="text-[8px] text-amber-500 font-black uppercase tracking-widest">Afgang</p>
+          <p className="font-black text-slate-800 uppercase text-sm">{fromCity}</p>
+          <p className="text-[10px] text-amber-600 font-bold mt-0.5">{departureTime != null ? formatTime(departureTime) : '--:--'}</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 border border-amber-100">
+          <p className="text-[8px] text-amber-500 font-black uppercase tracking-widest">Ankomst</p>
+          <p className="font-black text-slate-800 uppercase text-sm">{toCity}</p>
+          <p className="text-[10px] text-amber-600 font-bold mt-0.5">{finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
+          </div>
+          </div>
+          <div className="bg-amber-950 rounded-xl p-4 flex justify-between items-center">
+          <span className="text-amber-400 text-[10px] font-black uppercase tracking-widest">Taksameter</span>
+          <span className="text-amber-400 font-mono text-2xl font-black tracking-widest">
+          {Math.round(Math.max(0, (interpolatedTime - (departureTime||0)) * 2))}€
           </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-slate-400">
-          <p>Spil-tid: <span className="text-white">{Math.floor(interpolatedTime)}</span></p>
-          <p>Ankomst: <span className="text-white">{finalArrival || 'N/A'}</span></p>
-          <p>Segments: <span className="text-white">{currentPlayer.segments?.length || 0}</span></p>
-          <p>Buffer: <span className="text-white">{(interpolatedTime - finalArrival).toFixed(1)}</span></p>
+          <div className="bg-white p-3 rounded-xl border border-amber-100">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-6 pt-4 px-6">
+          <div className="flex items-center min-w-max">
+          {currentPlayer.segments?.map((seg, idx) => {
+            const isPast = interpolatedTime > seg.arrival;
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
+            return (
+              <React.Fragment key={idx}>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-5 h-5 rounded-full border-4 z-20 transition-all"
+              style={{ backgroundColor: isPast ? '#f59e0b' : '#fff', borderColor: isCurr ? '#f59e0b' : isPast ? 'transparent' : '#fde68a', transform: isCurr ? 'scale(1.3)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-amber-700 uppercase">{seg.from}</span>
+              </div>
+              <div className="relative w-16 h-[3px] bg-amber-100 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full bg-amber-400 transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%' }} />
+              </div>
+              {idx === currentPlayer.segments.length - 1 && (
+                <div className="flex flex-col items-center relative">
+                <div className="w-5 h-5 rounded-full border-4 border-amber-200 bg-white z-20" />
+                <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-amber-700 uppercase">{seg.to}</span>
+                </div>
+              )}
+              </React.Fragment>
+            );
+          })}
           </div>
+          </div>
+          </div>
+          </div>
+          </div>
+        )}
 
-          {isActuallyArrived && (
-            <button
-            onClick={async () => {
-              const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
-              await updateDoc(sessionRef, {
-                players: gameState.players.map(p => p.id === playerId ? { ...p, isTraveling: false, segments: null } : p)
-              });
-            }}
-            className="mt-4 w-full py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded uppercase font-black"
-            >
-            Tving ankomst (Nulstil)
-            </button>
-          )}
+        {/* ===== TOG: Klassisk riflet togbillet ===== */}
+        {cfg.ticketStyle === 'train' && (
+          <div className="w-full max-w-sm bg-white text-slate-900 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] overflow-hidden relative border-t-[12px]"
+          style={{ borderTopColor: cfg.accent }}>
+          <div className="absolute -top-1 left-0 right-0 flex justify-around px-2 pointer-events-none">
+          {[...Array(8)].map((_, i) => <div key={i} className="w-5 h-5 bg-slate-950 rounded-full -mt-3 shadow-inner" />)}
           </div>
-          </>
-        );
+          <div className="p-6 pt-8">
+          <div className="flex justify-between items-start mb-5 pb-4 border-b border-slate-100">
+          <div>
+          <p className="text-[9px] uppercase font-black text-slate-400 tracking-widest mb-1">Togbillet · IC</p>
+          <h2 className="text-xl font-black italic text-slate-900 leading-tight uppercase tracking-tighter">{cfg.description}</h2>
+          </div>
+          <div className="px-4 py-2 rounded-xl border font-black text-lg text-white tracking-tighter shadow-md flex items-center gap-1"
+          style={{ backgroundColor: cfg.accent }}>
+          🚆 {activeRoute.label}
+          </div>
+          </div>
+          <div className="flex justify-between items-center mb-6 px-1">
+          <div className="text-left">
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">Afgang</p>
+          <p className="text-xl font-black">{fromCity}</p>
+          <p className="text-[10px] font-bold mt-0.5" style={{ color: cfg.accent }}>{departureTime != null ? formatTime(departureTime) : '--:--'}</p>
+          </div>
+          <div className="flex-1 px-4 flex flex-col items-center">
+          <div className="w-full border-t-2 border-dashed border-slate-200 relative">
+          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white px-2">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-sm" style={{ backgroundColor: cfg.accent }}>🚆</div>
+          </div>
+          </div>
+          </div>
+          <div className="text-right">
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">Ankomst</p>
+          <p className="text-xl font-black">{toCity}</p>
+          <p className="text-[10px] font-bold mt-0.5" style={{ color: cfg.accent }}>{finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
+          </div>
+          </div>
+          <div className="mb-8 bg-slate-50 p-4 rounded-xl border border-slate-100 shadow-inner">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-8 pt-6 px-10">
+          <div className="flex items-center min-w-max">
+          {currentPlayer.segments?.map((seg, idx) => {
+            const isPast = interpolatedTime > seg.arrival;
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
+            return (
+              <React.Fragment key={idx}>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-6 h-6 rounded-full border-4 transition-all duration-500 z-20"
+              style={{ backgroundColor: isPast ? cfg.accent : '#fff', borderColor: isCurr ? cfg.accent : isPast ? 'transparent' : '#e2e8f0', transform: isCurr ? 'scale(1.25)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-2 absolute -bottom-6 whitespace-nowrap uppercase tracking-tight text-slate-400">{seg.from}</span>
+              </div>
+              <div className="relative w-20 h-[4px] bg-slate-200 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%', backgroundColor: cfg.accent }} />
+              </div>
+              {idx === currentPlayer.segments.length - 1 && (
+                <div className="flex flex-col items-center relative">
+                <div className="w-6 h-6 rounded-full border-4 border-slate-200 bg-white z-20" />
+                <span className="text-[9px] font-black mt-2 absolute -bottom-6 whitespace-nowrap uppercase tracking-tight text-slate-400">{seg.to}</span>
+                </div>
+              )}
+              </React.Fragment>
+            );
+          })}
+          </div>
+          </div>
+          </div>
+          <div className="border-t-2 border-slate-100 pt-4 flex flex-col items-center">
+          <div className="flex gap-[2px] h-8 mb-2 overflow-hidden w-full justify-center opacity-20">
+          {[...Array(40)].map((_, i) => <div key={i} className={`bg-slate-900 ${Math.random() > 0.4 ? 'w-[1px]' : 'w-[3px]'}`} />)}
+          </div>
+          <p className="text-[8px] font-mono text-slate-400 tracking-[0.4em] uppercase">{activeRoute.label}-{playerId.slice(0,10).toUpperCase()}</p>
+          </div>
+          </div>
+          <div className="absolute -bottom-1 left-0 right-0 flex justify-around px-2 pointer-events-none">
+          {[...Array(8)].map((_, i) => <div key={i} className="w-5 h-5 bg-slate-950 rounded-full -mb-3 shadow-inner" />)}
+          </div>
+          </div>
+        )}
+
+        {/* ===== BUS: Orange klippekort ===== */}
+        {cfg.ticketStyle === 'bus' && (
+          <div className="w-full max-w-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden bg-orange-50 border border-orange-200">
+          <div className="bg-orange-600 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+          <span className="text-3xl">🚌</span>
+          <div>
+          <p className="text-orange-100 text-[9px] font-black uppercase tracking-[0.3em]">Klippekort · Billet</p>
+          <p className="text-white text-lg font-black uppercase">{cfg.description}</p>
+          </div>
+          </div>
+          <div className="bg-white text-orange-600 px-3 py-1 rounded font-black text-sm uppercase">{activeRoute.label || 'BUS'}</div>
+          </div>
+          {/* Klip-visuel */}
+          <div className="bg-orange-100 px-6 py-3 flex gap-2 border-b border-orange-200">
+          {[...Array(10)].map((_, i) => (
+            <div key={i} className={`flex-1 h-8 rounded border-2 flex items-center justify-center text-sm font-black transition-all
+              ${i < Math.floor(((interpolatedTime - (departureTime||0)) / Math.max(1,(finalArrival||0) - (departureTime||0))) * 10)
+                ? 'bg-orange-600 border-orange-600 text-white'
+          : 'bg-white border-orange-300 text-orange-300'}`}>
+          {i < Math.floor(((interpolatedTime - (departureTime||0)) / Math.max(1,(finalArrival||0) - (departureTime||0))) * 10) ? '✓' : ''}
+          </div>
+          ))}
+          </div>
+          <div className="p-6 space-y-3">
+          <div className="flex justify-between">
+          <div>
+          <p className="text-[9px] text-orange-600 font-black uppercase tracking-widest">Fra · {departureTime != null ? formatTime(departureTime) : '--:--'}</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{fromCity}</p>
+          </div>
+          <div className="text-right">
+          <p className="text-[9px] text-orange-600 font-black uppercase tracking-widest">Til · {finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{toCity}</p>
+          </div>
+          </div>
+          <div className="bg-white p-3 rounded-xl border border-orange-100">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-6 pt-4 px-6">
+          <div className="flex items-center min-w-max">
+          {currentPlayer.segments?.map((seg, idx) => {
+            const isPast = interpolatedTime > seg.arrival;
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
+            return (
+              <React.Fragment key={idx}>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-5 h-5 rounded-full border-4 z-20 transition-all"
+              style={{ backgroundColor: isPast ? '#ea580c' : '#fff', borderColor: isCurr ? '#ea580c' : '#fed7aa', transform: isCurr ? 'scale(1.3)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-orange-700 uppercase">{seg.from}</span>
+              </div>
+              <div className="relative w-16 h-[3px] bg-orange-100 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full bg-orange-500 transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%' }} />
+              </div>
+              {idx === currentPlayer.segments.length - 1 && (
+                <div className="flex flex-col items-center relative">
+                <div className="w-5 h-5 rounded-full border-4 border-orange-200 bg-white z-20" />
+                <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-orange-700 uppercase">{seg.to}</span>
+                </div>
+              )}
+              </React.Fragment>
+            );
+          })}
+          </div>
+          </div>
+          </div>
+          </div>
+          </div>
+        )}
+
+        {/* ===== FLY: Mørk boarding pass ===== */}
+        {cfg.ticketStyle === 'flight' && (
+          <div className="w-full max-w-sm shadow-[0_20px_60px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden bg-sky-950 border border-sky-800 text-white">
+          <div className="px-6 py-5 border-b border-sky-800/60"
+          style={{ background: 'linear-gradient(135deg, #0c4a6e 0%, #075985 100%)' }}>
+          <div className="flex justify-between items-start mb-4">
+          <div>
+          <p className="text-sky-400 text-[9px] font-black uppercase tracking-[0.35em]">Boarding Pass</p>
+          <p className="text-white text-xl font-black uppercase tracking-tight mt-1">{cfg.description}</p>
+          </div>
+          <div className="text-right">
+          <p className="text-sky-400 text-[9px] font-black uppercase tracking-widest">Flight</p>
+          <p className="text-white font-black text-lg">{activeRoute.label || 'EX1'}</p>
+          </div>
+          </div>
+          <div className="flex justify-between items-end">
+          <div>
+          <p className="text-sky-400 text-[9px] font-black uppercase tracking-widest">Fra</p>
+          <p className="text-white text-3xl font-black uppercase tracking-tighter leading-none">{fromCity.slice(0,3).toUpperCase()}</p>
+          <p className="text-sky-300 text-[10px] font-bold mt-1">{fromCity}</p>
+          <p className="text-sky-400 text-[9px] font-black mt-0.5">{departureTime != null ? formatTime(departureTime) : '--:--'}</p>
+          </div>
+          <div className="flex flex-col items-center">
+          <span className="text-3xl">✈️</span>
+          <div className="w-20 border-t border-dashed border-sky-700 mt-1" />
+          </div>
+          <div className="text-right">
+          <p className="text-sky-400 text-[9px] font-black uppercase tracking-widest">Til</p>
+          <p className="text-white text-3xl font-black uppercase tracking-tighter leading-none">{toCity.slice(0,3).toUpperCase()}</p>
+          <p className="text-sky-300 text-[10px] font-bold mt-1">{toCity}</p>
+          <p className="text-sky-400 text-[9px] font-black mt-0.5">{finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
+          </div>
+          </div>
+          </div>
+          <div className="flex gap-0 border-b border-sky-800/60">
+          <div className="flex-1 px-4 py-3 border-r border-sky-800/40">
+          <p className="text-sky-500 text-[8px] font-black uppercase tracking-widest">Passager</p>
+          <p className="text-white font-black text-sm uppercase">{currentPlayer.name}</p>
+          </div>
+          <div className="flex-1 px-4 py-3 border-r border-sky-800/40">
+          <p className="text-sky-500 text-[8px] font-black uppercase tracking-widest">Gate</p>
+          <p className="text-white font-black text-sm">{String.fromCharCode(65 + Math.floor(Math.random()*6))}{Math.floor(Math.random()*30)+1}</p>
+          </div>
+          <div className="flex-1 px-4 py-3">
+          <p className="text-sky-500 text-[8px] font-black uppercase tracking-widest">Sæde</p>
+          <p className="text-white font-black text-sm">{Math.floor(Math.random()*30)+1}{String.fromCharCode(65+Math.floor(Math.random()*6))}</p>
+          </div>
+          </div>
+          <div className="p-4 bg-sky-900/40">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-6 pt-4 px-6">
+          <div className="flex items-center min-w-max">
+          {currentPlayer.segments?.map((seg, idx) => {
+            const isPast = interpolatedTime > seg.arrival;
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
+            return (
+              <React.Fragment key={idx}>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-5 h-5 rounded-full border-4 z-20 transition-all"
+              style={{ backgroundColor: isPast ? '#0ea5e9' : '#0c4a6e', borderColor: isCurr ? '#38bdf8' : '#0369a1', transform: isCurr ? 'scale(1.3)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-sky-400 uppercase">{seg.from}</span>
+              </div>
+              <div className="relative w-16 h-[2px] bg-sky-900 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full bg-sky-500 transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%' }} />
+              </div>
+              {idx === currentPlayer.segments.length - 1 && (
+                <div className="flex flex-col items-center relative">
+                <div className="w-5 h-5 rounded-full border-4 border-sky-800 bg-sky-950 z-20" />
+                <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-sky-400 uppercase">{seg.to}</span>
+                </div>
+              )}
+              </React.Fragment>
+            );
+          })}
+          </div>
+          </div>
+          </div>
+          <div className="px-6 pb-4 flex flex-col items-center">
+          <div className="flex gap-[2px] h-8 mb-1 overflow-hidden w-full justify-center opacity-30">
+          {[...Array(40)].map((_, i) => <div key={i} className={`bg-sky-200 ${Math.random() > 0.4 ? 'w-[1px]' : 'w-[3px]'}`} />)}
+          </div>
+          <p className="text-[8px] font-mono text-sky-600 tracking-[0.4em] uppercase">{activeRoute.label || 'EX'}-{playerId.slice(0,10).toUpperCase()}</p>
+          </div>
+          </div>
+        )}
+
+        {/* ===== FÆRGE: Teal maritim billet ===== */}
+        {cfg.ticketStyle === 'ferry' && (
+          <div className="w-full max-w-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden bg-teal-50 border border-teal-200">
+          <div className="bg-teal-700 px-6 py-4">
+          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+          <span className="text-3xl">⛴️</span>
+          <div>
+          <p className="text-teal-200 text-[9px] font-black uppercase tracking-[0.3em]">Færgebillet</p>
+          <p className="text-white text-lg font-black uppercase">{cfg.description}</p>
+          </div>
+          </div>
+          <div className="bg-teal-900 text-teal-300 px-3 py-1 rounded font-black text-xs uppercase tracking-widest">{activeRoute.label || 'FERRY'}</div>
+          </div>
+          {/* Bølge-dekorationsstrip */}
+          <div className="text-teal-400 text-xs tracking-[0.2em] opacity-60">〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️</div>
+          </div>
+          <div className="p-6 space-y-4">
+          <div className="flex justify-between">
+          <div>
+          <p className="text-[9px] text-teal-600 font-black uppercase tracking-widest">Afsejling</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{fromCity}</p>
+          <p className="text-[10px] text-teal-700 font-bold mt-0.5">{departureTime != null ? formatTime(departureTime) : '--:--'}</p>
+          </div>
+          <div className="flex flex-col items-center justify-center">
+          <span className="text-2xl">⚓</span>
+          <span className="text-[8px] text-teal-500 font-black uppercase">sejlrute</span>
+          </div>
+          <div className="text-right">
+          <p className="text-[9px] text-teal-600 font-black uppercase tracking-widest">Anløb</p>
+          <p className="text-xl font-black text-slate-800 uppercase">{toCity}</p>
+          <p className="text-[10px] text-teal-700 font-bold mt-0.5">{finalArrival != null ? formatTime(finalArrival) : '--:--'}</p>
+          </div>
+          </div>
+          <div className="border-t border-dashed border-teal-200 pt-3">
+          <div className="bg-white p-3 rounded-xl border border-teal-100">
+          <div ref={ticketScrollRef} className="overflow-x-auto no-scrollbar pb-6 pt-4 px-6">
+          <div className="flex items-center min-w-max">
+          {currentPlayer.segments?.map((seg, idx) => {
+            const isPast = interpolatedTime > seg.arrival;
+            const isCurr = interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival;
+            return (
+              <React.Fragment key={idx}>
+              <div ref={isCurr ? currentStopRef : null} className="flex flex-col items-center relative">
+              <div className="w-5 h-5 rounded-full border-4 z-20 transition-all"
+              style={{ backgroundColor: isPast ? '#0d9488' : '#fff', borderColor: isCurr ? '#0d9488' : '#99f6e4', transform: isCurr ? 'scale(1.3)' : 'scale(1)' }} />
+              <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-teal-700 uppercase">{seg.from}</span>
+              </div>
+              <div className="relative w-16 h-[3px] bg-teal-100 -mx-1 z-10 rounded-full overflow-hidden">
+              <div className="absolute left-0 top-0 h-full bg-teal-500 transition-all duration-1000"
+              style={{ width: isPast ? '100%' : isCurr ? '50%' : '0%' }} />
+              </div>
+              {idx === currentPlayer.segments.length - 1 && (
+                <div className="flex flex-col items-center relative">
+                <div className="w-5 h-5 rounded-full border-4 border-teal-200 bg-white z-20" />
+                <span className="text-[9px] font-black mt-1 absolute -bottom-5 whitespace-nowrap text-teal-700 uppercase">{seg.to}</span>
+                </div>
+              )}
+              </React.Fragment>
+            );
+          })}
+          </div>
+          </div>
+          </div>
+          </div>
+          <div className="flex gap-[2px] h-6 overflow-hidden w-full justify-center opacity-20">
+          {[...Array(40)].map((_, i) => <div key={i} className={`bg-teal-900 ${Math.random() > 0.4 ? 'w-[1px]' : 'w-[3px]'}`} />)}
+          </div>
+          </div>
+          </div>
+        )}
+
+        {/* DEBUG PANEL */}
+        <div className="mt-8 w-full max-w-sm p-4 bg-black/40 border border-white/10 rounded-xl font-mono text-[10px]">
+        <div className="flex justify-between items-center mb-2">
+        <span className="text-blue-400 font-bold uppercase">System Status</span>
+        <span className={isActuallyArrived ? "text-red-400 animate-pulse" : "text-green-400"}>
+        {isActuallyArrived ? "ANKOMMET (VENTER PÅ SYNC)" : "REJSER..."}
+        </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-slate-400">
+        <p>Spil-tid: <span className="text-white">{Math.floor(interpolatedTime)}</span></p>
+        <p>Ankomst: <span className="text-white">{finalArrival || 'N/A'}</span></p>
+        <p>Segments: <span className="text-white">{currentPlayer.segments?.length || 0}</span></p>
+        <p>Buffer: <span className="text-white">{(interpolatedTime - finalArrival).toFixed(1)}</span></p>
+        </div>
+        {isActuallyArrived && (
+          <button
+          onClick={async () => {
+            const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+            await updateDoc(sessionRef, {
+              players: gameState.players.map(p => p.id === playerId ? { ...p, isTraveling: false, segments: null } : p)
+            });
+          }}
+          className="mt-4 w-full py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded uppercase font-black"
+          >
+          Tving ankomst (Nulstil)
+          </button>
+        )}
+        </div>
+        </>
+      );
       })()}
       </div>
     ) : (
