@@ -12,7 +12,7 @@ import {
   User, CheckCircle2, Ticket, AlertTriangle, XCircle, Info, Trophy, Flag, Activity
 } from 'lucide-react';
 import { COUNTRY_DATA } from './data/countries.js'; // Use relative path
-
+import { JOB_POOL, JOB_COUNT_BY_SIZE, JOB_REFRESH_INTERVAL } from './data/jobs.js';
 
 // =========================================================================
 // 1. DATA-PROCESSERING (Klargøring af lande, byer og linjer)
@@ -35,7 +35,6 @@ const TRANSIT_LINES = Object.values(COUNTRY_DATA).reduce((acc, country) => {
 const CATEGORY_STYLE = Object.values(COUNTRY_DATA).reduce((acc, country) => {
   return { ...acc, ...country.styles };
 }, {});
-
 
 // =========================================================================
 // 2. FIREBASE SETUP (Forbindelsen til din database)
@@ -77,7 +76,7 @@ const TRAVEL_TYPES = {
 
 // Liste over Hændelser
 const INCIDENT_TYPES = [
-{ type: 'train', label: 'Væltet træ på skinnerne', icon: Train },
+  { type: 'train', label: 'Væltet træ på skinnerne', icon: Train },
 { type: 'train', label: 'Signalfejl', icon: Train },
 { type: 'bus', label: 'Vejspærring på motorvejen', icon: Bus },
 { type: 'bus', label: 'Mangel på chauffører', icon: Bus },
@@ -92,6 +91,9 @@ const AVATARS = ["👨🏼‍💼", "👩🏼‍💼", "👨🏼‍✈️", "�
 
 // Hvor mange minutter man holder stille i en by
 const STOP_DURATION = 1;
+
+
+
 
 
 // =========================================================================
@@ -187,6 +189,26 @@ const calculateStopInfo = (dep, targetStop, startCity) => {
   return { price, duration, route };
 };
 
+
+// Finder rette job-pool for en by (tjekker parent, derefter by-navn, ellers default)
+const getJobPoolForCity = (cityName) => {
+  const city = CITIES[cityName];
+  const lookupName = city?.parent
+  ? city.parent.toLowerCase()
+  : cityName.toLowerCase();
+  return JOB_POOL[lookupName] || JOB_POOL['default'];
+};
+
+// Trækker N tilfældige jobs fra poolen og tildeler unikke runtime-id'er
+const drawJobs = (cityName, count) => {
+  const pool = getJobPoolForCity(cityName);
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count).map(job => ({
+    ...job,
+    instanceId: `${job.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                              takenBy: null
+  }));
+};
 
 // "Hjernen" der finder den korteste vej fra by til by via togskinner/veje
 const findPath = (startCity, endCity, transportMode) => {
@@ -327,6 +349,13 @@ export default function App() {
   const [departedBuffer, setDepartedBuffer] = useState([]);
   const [autoZoom, setAutoZoom] = useState(true);
   const autoZoomRef = useRef(true);
+  const [jobMarket, setJobMarket] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [jobEventChoice, setJobEventChoice] = useState(null);
+  const [jobScreen, setJobScreen] = useState('listing'); // 'listing' | 'detail' | 'working' | 'event' | 'payout'
+  const [currentEventIndex, setCurrentEventIndex] = useState(0);
+  const [eventResults, setEventResults] = useState([]); // gemmer valg undervejs
+  const [jackpotEvent, setJackpotEvent] = useState(null);
 
   // --- Refs (Hukommelse der ikke genstarter skærmen ved ændring) ---
   const mapRef = useRef(null);
@@ -346,6 +375,10 @@ export default function App() {
   // 6. EFFECTS (Ting der sker automatisk i baggrunden)
   // =========================================================================
 
+
+
+
+
   const [playerId] = useState(() => {
     // Brug altid et nyt id per React-instans, gem det kun i state
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -353,6 +386,31 @@ export default function App() {
 
 
   const currentPlayer = gameState?.players?.find(p => p.id === playerId);
+
+
+  useEffect(() => {
+    if (!currentPlayer?.currentJob) return;
+    if ((gameState?.gameMinutes ?? 0) < currentPlayer.currentJob.endTime) return;
+    if (jobScreen === 'working') {
+      // Tjek for jackpot
+      if (Math.random() < JACKPOT_CHANCE) {
+        const j = JACKPOT_EVENTS[Math.floor(Math.random() * JACKPOT_EVENTS.length)];
+        setJackpotEvent({ ...j, choiceA: { label: 'Tag pengene', payBonus: j.payBonus, flavor: j.flavor }, choiceB: { label: 'Lad dem ligge', payBonus: 0, flavor: 'Du er for ærlig til det.' } });
+      }
+      setSelectedJob(currentPlayer.currentJob);
+      setJobScreen('event');
+    }
+  }, [gameState?.gameMinutes, currentPlayer?.currentJob]);
+
+  useEffect(() => {
+    if (!currentPlayer?.currentJob) return;
+    if ((gameState?.gameMinutes ?? 0) >= currentPlayer.currentJob.endTime) {
+      setSelectedJob(currentPlayer.currentJob);
+      setJobScreen('event');
+    }
+  }, [gameState?.gameMinutes, currentPlayer?.currentJob]);
+
+
 
   // --- A. TIDSSYNKRONISERING ---
   // Denne blok sørger for, at uret tikker jævnt mellem server-opdateringer
@@ -395,6 +453,22 @@ export default function App() {
     }
   }, [interpolatedTime, currentPlayer?.isTraveling, currentPlayer?.segments]);
 
+  useEffect(() => {
+    if (!currentPlayer || currentPlayer.isTraveling) return;
+    const city = currentPlayer.currentCity;
+    if (!city) return;
+
+    console.log('🏙️ City:', city);
+    console.log('📦 CITIES entry:', CITIES[city]);
+    console.log('🔑 Size:', CITIES[city]?.size);
+
+    fetchOrRefreshJobMarket(city, gameState?.gameMinutes ?? 0)
+    .then(listings => {
+      console.log('📋 Listings hentet:', listings);
+      setJobMarket(listings);
+    })
+    .catch(err => console.error('❌ Fejl:', err));
+  }, [currentPlayer?.currentCity, currentPlayer?.isTraveling]);
 
   useEffect(() => {
     const updateInterpolation = () => {
@@ -703,6 +777,24 @@ export default function App() {
   }, [leafletReady, role, gameState?.status, gameState?.goalCity, setSelectedCity]);
 
 
+  const fetchOrRefreshJobMarket = async (cityName, gameMinutes) => {
+    const size = CITIES[cityName]?.size || 'small';
+    const count = JOB_COUNT_BY_SIZE[size] || 1;
+    const ref = doc(db, `artifacts/${appId}/public/data/jobs`, cityName);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      const age = gameMinutes - (data.refreshedAt || 0);
+      // Returner eksisterende marked hvis det ikke er forældet
+      if (age < JOB_REFRESH_INTERVAL) return data.listings;
+    }
+
+    // Opret eller forny jobmarkedet
+    const listings = drawJobs(cityName, count);
+    await setDoc(ref, { refreshedAt: gameMinutes ?? 0, listings });
+    return listings;
+  };
 
 
   // =========================================================================
@@ -1266,6 +1358,71 @@ export default function App() {
         segments: newSegments
       } : p)
     });
+  };
+
+
+  const handleTakeJob = async (job, choice = null) => {
+    const cityRef = doc(db, `artifacts/${appId}/public/data/jobs`, currentPlayer.currentCity);
+    const playerRef = doc(db, `artifacts/${appId}/public/data/players`, playerId);
+
+    // ── START JOB ──────────────────────────────────────────────
+    if (!choice) {
+      const snap = await getDoc(cityRef);
+      const listings = snap.data()?.listings || [];
+      const updated = listings.map(l =>
+      l.instanceId === job.instanceId ? { ...l, takenBy: playerId } : l
+      );
+      await updateDoc(cityRef, { listings: updated });
+      setJobMarket(updated);
+
+      const endTime = (gameState?.gameMinutes ?? 0) + (job.durationHours * 60);
+      await updateDoc(playerRef, { currentJob: { ...job, endTime } });
+
+      setSelectedJob(job);
+      setCurrentEventIndex(0);
+      setEventResults([]);
+      setJackpotEvent(null);
+      setJobScreen('working');
+      return;
+    }
+
+    // ── HÅNDTER VALG ───────────────────────────────────────────
+    const events = selectedJob.events || [];
+    const currentEvent = jackpotEvent
+    ? jackpotEvent
+    : events[currentEventIndex];
+
+    const chosen = choice === 'A' ? currentEvent.choiceA : currentEvent.choiceB;
+    const bonus = chosen?.payBonus ?? currentEvent.payBonus ?? 0;
+
+    const newResults = [...eventResults, {
+      prompt: currentEvent.prompt,
+      choiceLabel: chosen?.label ?? '—',
+      flavor: chosen?.flavor ?? currentEvent.flavor ?? '',
+      bonus,
+      isJackpot: !!jackpotEvent,
+    }];
+    setEventResults(newResults);
+    setJackpotEvent(null);
+
+    // Er der flere events?
+    const nextIndex = currentEventIndex + 1;
+    if (!jackpotEvent && nextIndex < events.length) {
+      setCurrentEventIndex(nextIndex);
+      return;
+    }
+
+    // ── UDBETALING ─────────────────────────────────────────────
+    const totalBonus = newResults.reduce((sum, r) => sum + r.bonus, 0);
+    const totalPay = Math.max(0, (selectedJob.pay ?? 0) + totalBonus);
+
+    await updateDoc(playerRef, {
+      money: (currentPlayer.money ?? 0) + totalPay,
+                    currentJob: null,
+    });
+
+    setJobEventChoice({ totalPay, totalBonus, results: newResults });
+    setJobScreen('payout');
   };
 
   const formatTime = (t) => {
@@ -3058,12 +3215,275 @@ export default function App() {
       )}
       {/* TAB: ARBEJDE */}
       {playerTab === 'work' && (
-        <div className="h-full flex flex-col items-center justify-center p-8 opacity-40 grayscale">
-        <div className="bg-slate-800 p-8 rounded-full mb-4">
-        <Users size={48} />
-        </div>
-        <h3 className="text-xl font-black uppercase">Jobcenter</h3>
-        <p className="text-[10px] text-center mt-2 uppercase">Arbejde er midlertidigt utilgængeligt i denne by.</p>
+        <div className="h-full flex flex-col overflow-hidden">
+
+        {/* ══ JOBMARKED ══════════════════════════════════════════════ */}
+        {jobScreen === 'listing' && (
+          <div className="flex-1 overflow-y-auto">
+          <div className="p-4 pb-2 border-b border-white/5">
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Jobmarked</div>
+          <div className="font-black text-lg uppercase text-white leading-none mt-0.5">{currentPlayer.currentCity}</div>
+          </div>
+          <div className="p-4 space-y-3">
+          {jobMarket.length === 0 && (
+            <div className="text-center opacity-30 italic uppercase font-black text-xs tracking-widest pt-12">
+            Ingen jobs tilgængelige
+            </div>
+          )}
+          {jobMarket.map(job => {
+            const taken = job.takenBy !== null;
+            const mine = job.takenBy === playerId;
+            const locked = job.unlocksFrom && (currentPlayer.jobHistory?.[job.unlocksFrom.jobId] ?? 0) < job.unlocksFrom.count;
+            return (
+              <button
+              key={job.instanceId}
+              disabled={taken || locked}
+              onClick={() => { setSelectedJob(job); setJobScreen('detail'); }}
+              className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                locked ? 'opacity-40 border-transparent bg-slate-800/40 cursor-not-allowed'
+                : mine ? 'bg-blue-600/10 border-blue-500/30'
+                : taken ? 'opacity-25 border-transparent bg-slate-800/40 cursor-not-allowed'
+                : 'bg-white/5 border-white/10 hover:bg-blue-600/10 hover:border-blue-500/50 active:scale-[0.98]'
+              }`}
+              >
+              <div className="flex justify-between items-start gap-4">
+              <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xl">{job.emoji}</span>
+              <span className="font-black uppercase text-white text-sm leading-none">{job.title}</span>
+              {locked && (
+                <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">
+                🔒 {job.unlocksFrom.count - (currentPlayer.jobHistory?.[job.unlocksFrom.jobId] ?? 0)} jobs mangler
+                </span>
+              )}
+              {mine && <span className="text-[8px] bg-blue-500/20 text-blue-400 font-black uppercase px-1.5 py-0.5 rounded-full">Aktivt</span>}
+              {taken && !mine && <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">Taget</span>}
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1 leading-snug">{job.description}</div>
+              <div className="flex items-center gap-1 mt-2 text-[9px] text-slate-500 uppercase font-black">
+              <Clock size={9} /> {job.durationHours}t · {job.events?.length ?? 1} hændelse{job.events?.length !== 1 ? 'r' : ''}
+              </div>
+              </div>
+              <div className="text-right shrink-0">
+              <div className="font-black text-green-400 text-xl leading-none">{job.pay}€</div>
+              <div className="text-[9px] text-slate-600 uppercase mt-0.5">løn</div>
+              </div>
+              </div>
+              </button>
+            );
+          })}
+          </div>
+          </div>
+        )}
+
+        {/* ══ JOB-DETALJE ════════════════════════════════════════════ */}
+        {jobScreen === 'detail' && selectedJob && (
+          <div className="absolute inset-0 z-50 bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300">
+          <div className="p-6 bg-slate-900 border-b border-white/10">
+          <button
+          onClick={() => setJobScreen('listing')}
+          className="flex items-center gap-2 text-blue-400 font-black uppercase text-[10px] tracking-widest mb-4 hover:text-blue-300"
+          >
+          <RotateCcw size={12} /> Tilbage til jobmarkedet
+          </button>
+          <div className="flex items-center gap-3">
+          <span className="text-4xl">{selectedJob.emoji}</span>
+          <div>
+          <div className="font-black text-2xl uppercase text-white leading-none">{selectedJob.title}</div>
+          <div className="text-slate-500 text-xs mt-1">{currentPlayer.currentCity}</div>
+          </div>
+          </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <p className="text-slate-400 text-sm leading-relaxed">{selectedJob.description}</p>
+
+          <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
+          <div className="text-[9px] font-black uppercase text-slate-500 mb-1">Grundløn</div>
+          <div className="font-black text-2xl text-green-400">{selectedJob.pay}€</div>
+          </div>
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
+          <div className="text-[9px] font-black uppercase text-slate-500 mb-1">Varighed</div>
+          <div className="font-black text-2xl text-white">{selectedJob.durationHours}t</div>
+          </div>
+          </div>
+
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
+          <div className="text-[9px] font-black uppercase text-slate-500 mb-2">Hvad sker der?</div>
+          <div className="space-y-2">
+          {selectedJob.events?.map((e, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
+            <span className="text-slate-600 font-black shrink-0">{i + 1}.</span>
+            <span>{e.prompt}</span>
+            </div>
+          ))}
+          <div className="flex items-start gap-2 text-xs text-amber-500/70 mt-2">
+          <span>⭐</span>
+          <span>Der kan ske noget uventet undervejs…</span>
+          </div>
+          </div>
+          </div>
+
+          {selectedJob.unlocksFrom && (
+            <div className="bg-blue-900/20 rounded-2xl p-4 border border-blue-500/20">
+            <div className="text-[9px] font-black uppercase text-blue-400 mb-1">Låser op for</div>
+            <div className="text-xs text-slate-400">Tag dette job {selectedJob.unlocksFrom.count} gange for at låse næste tier op</div>
+            <div className="mt-2 flex gap-1">
+            {Array.from({ length: selectedJob.unlocksFrom.count }).map((_, i) => (
+              <div key={i} className={`h-1.5 flex-1 rounded-full ${
+                i < (currentPlayer.jobHistory?.[selectedJob.unlocksFrom.jobId] ?? 0)
+                ? 'bg-blue-500' : 'bg-slate-700'
+              }`} />
+            ))}
+            </div>
+            </div>
+          )}
+          </div>
+
+          <div className="p-4 border-t border-white/5">
+          <button
+          onClick={() => handleTakeJob(selectedJob)}
+          className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] font-black uppercase text-sm tracking-widest transition-all"
+          >
+          Start job — {selectedJob.pay}€
+          </button>
+          </div>
+          </div>
+        )}
+
+        {/* ══ ARBEJDER ═══════════════════════════════════════════════ */}
+        {jobScreen === 'working' && selectedJob && (
+          <div className="flex-1 flex flex-col justify-center items-center p-8 gap-5 text-center">
+          <div className="relative">
+          <div className="text-6xl">{selectedJob.emoji}</div>
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping" />
+          </div>
+          <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Du arbejder nu</div>
+          <div className="font-black text-2xl uppercase text-white leading-none">{selectedJob.title}</div>
+          <div className="text-slate-500 text-xs mt-1">{currentPlayer.currentCity}</div>
+          </div>
+          <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3">
+          <div className="flex justify-between items-center">
+          <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
+          <span className="font-black text-green-400">{selectedJob.pay}€</span>
+          </div>
+          <div className="flex justify-between items-center">
+          <span className="text-[9px] font-black uppercase text-slate-500">Færdig kl.</span>
+          <span className="font-black text-white tabular-nums">{formatTime(currentPlayer.currentJob?.endTime ?? 0)}</span>
+          </div>
+          <div className="h-px bg-white/5" />
+          <div className="text-[9px] text-slate-600 uppercase font-black text-center">
+          {selectedJob.events?.length ?? 1} hændelse{(selectedJob.events?.length ?? 1) !== 1 ? 'r' : ''} venter på dig…
+          </div>
+          </div>
+          <div className="text-[9px] text-slate-600 uppercase font-black">Du kan se afgange imens</div>
+          </div>
+        )}
+
+        {/* ══ HÆNDELSE ═══════════════════════════════════════════════ */}
+        {jobScreen === 'event' && selectedJob && (() => {
+          const events = selectedJob.events || [];
+          const currentEvent = jackpotEvent ?? events[currentEventIndex];
+          if (!currentEvent) return null;
+          return (
+            <div className="flex-1 flex flex-col justify-center p-6 gap-5">
+            {jackpotEvent && (
+              <div className="text-center animate-pulse">
+              <div className="text-4xl mb-1">{jackpotEvent.icon}</div>
+              <div className="text-[9px] font-black uppercase tracking-widest text-amber-500">Uventet hændelse!</div>
+              </div>
+            )}
+            {!jackpotEvent && (
+              <div className="text-center">
+              <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">
+              Hændelse {currentEventIndex + 1} / {events.length}
+              </div>
+              </div>
+            )}
+            <div className="text-center font-black text-xl text-white leading-snug">
+            {currentEvent.prompt}
+            </div>
+            <div className="space-y-3">
+            <button
+            onClick={() => handleTakeJob(selectedJob, 'A')}
+            className="w-full p-4 rounded-2xl bg-blue-600/20 border border-blue-500/40 hover:bg-blue-600/30 active:scale-[0.98] text-left transition-all"
+            >
+            <div className="font-black text-white text-sm">{currentEvent.choiceA.label}</div>
+            <div className="flex items-center gap-2 mt-1">
+            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${currentEvent.choiceA.payBonus >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            {currentEvent.choiceA.payBonus >= 0 ? '+' : ''}{currentEvent.choiceA.payBonus}€
+            </span>
+            </div>
+            </button>
+            <button
+            onClick={() => handleTakeJob(selectedJob, 'B')}
+            className="w-full p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-[0.98] text-left transition-all"
+            >
+            <div className="font-black text-white text-sm">{currentEvent.choiceB.label}</div>
+            <div className="flex items-center gap-2 mt-1">
+            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${currentEvent.choiceB.payBonus >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            {currentEvent.choiceB.payBonus >= 0 ? '+' : ''}{currentEvent.choiceB.payBonus}€
+            </span>
+            </div>
+            </button>
+            </div>
+            </div>
+          );
+        })()}
+
+        {/* ══ UDBETALING ════════════════════════════════════════════ */}
+        {jobScreen === 'payout' && jobEventChoice && (
+          <div className="flex-1 flex flex-col justify-center items-center p-6 gap-5 text-center overflow-y-auto">
+          <div className="text-6xl">🎉</div>
+          <div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Jobbet er færdigt</div>
+          <div className="font-black text-5xl text-green-400 leading-none">+{jobEventChoice.totalPay}€</div>
+          </div>
+
+          <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3 text-left">
+          <div className="flex justify-between items-center">
+          <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
+          <span className="font-black text-white">{selectedJob?.pay ?? 0}€</span>
+          </div>
+          {jobEventChoice.results?.map((r, i) => (
+            <div key={i} className="space-y-1">
+            <div className="flex justify-between items-center">
+            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full ${r.isJackpot ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-400'}`}>
+            {r.isJackpot ? '⭐ Jackpot' : `Valg ${i + 1}`}: {r.choiceLabel}
+            </span>
+            <span className={`font-black text-sm ${r.bonus >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {r.bonus >= 0 ? '+' : ''}{r.bonus}€
+            </span>
+            </div>
+            {r.flavor && (
+              <div className="text-[9px] text-slate-600 italic pl-1">{r.flavor}</div>
+            )}
+            </div>
+          ))}
+          <div className="h-px bg-white/5" />
+          <div className="flex justify-between items-center">
+          <span className="text-[9px] font-black uppercase text-slate-500">Total</span>
+          <span className="font-black text-green-400 text-lg">{jobEventChoice.totalPay}€</span>
+          </div>
+          </div>
+
+          <button
+          onClick={() => {
+            setJobScreen('listing');
+            setSelectedJob(null);
+            setJobEventChoice(null);
+            setEventResults([]);
+            setCurrentEventIndex(0);
+          }}
+          className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] font-black uppercase text-sm tracking-widest transition-all"
+          >
+          Tilbage til jobmarkedet
+          </button>
+          </div>
+        )}
+
         </div>
       )}
       </>

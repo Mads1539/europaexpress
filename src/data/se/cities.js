@@ -1,5 +1,5 @@
 export const CITIES = {
-  "Malmö C": { pos: [55.60944, 13.00234], country: "SE", hub: true, station: "Malmö Centralstation", bus: "Malmö Central", ferry: "Malmö Hamn", airport: null, category: "SE_Skåne" },
+  "Malmö C": { pos: [55.60944, 13.00234], country: "SE", size: "large", hub: true, station: "Malmö Centralstation", bus: "Malmö Central", ferry: "Malmö Hamn", airport: null, category: "SE_Skåne" },
   "Triangeln": { pos: [55.59325, 13.00105], country: "SE", hub: false, station: "Triangeln Station", bus: "Malmö Triangeln", ferry: null, airport: null, category: "SE_Skåne" },
   "Hyllie": { pos: [55.56271, 12.97583], country: "SE", hub: false, station: "Hyllie Station", bus: "Malmö Hyllie", ferry: null, airport: null, category: "SE_Skåne" },
   "Lund C": { pos: [55.70673, 13.18638], country: "SE", hub: true, station: "Lund Centralstation", bus: "Lund Central", ferry: null, airport: null, category: "SE_Skåne" },
