@@ -314,5 +314,35 @@ export const CITIES = {
     "Aarhus Færgehavn": { pos: [56.15182, 10.25295], country: "DK", parent: null, size: null, hub: false, station: null, bus: "Aarhus Færgehavn", ferry: "Aarhus Færgehavn", airport: null, category: "" },
     "Aarhus H": { pos: [56.14974, 10.204], country: "DK", parent: null, size: null, hub: true, station: "Aarhus Hovedbanegård", bus: "Aarhus Rutebilstation", ferry: null, airport: null, category: "DK_Østjylland" },
     "Årslev": { pos: [55.30123, 10.46594], country: "DK", parent: null, size: null, hub: false, station: "Årslev Station", bus: "Årslev St.", ferry: null, airport: null, category: "DK_Fyn" },
-    "Aarup": { pos: [55.38299, 10.05189], country: "DK", parent: null, size: null, hub: false, station: "Aarup Station", bus: "Aarup St.", ferry: null, airport: null, category: "DK_Fyn" }
+    "Aarup": { pos: [55.38299, 10.05189], country: "DK", parent: null, size: null, hub: false, station: "Aarup Station", bus: "Aarup St.", ferry: null, airport: null, category: "DK_Fyn" },
+        "Brønderslev": { pos: [57.27013, 9.94237], country: "DK", parent: null, size: "medium", hub: false, station: "Brønderslev Station", bus: "Brønderslev St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Bunken": { pos: [57.6301, 10.43952], country: "DK", parent: null, size: "small", hub: false, station: "Bunken Trinbræt", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Frederikshavn": { pos: [57.44144, 10.54061], country: "DK", parent: null, size: "medium", hub: true, station: "Frederikshavn St.", bus: "Frederikshavn St.", ferry: "Frederikshavn Havn", airport: null, category: "DK_Nordjylland" },
+        "Frederiskhavnsvej": { pos: [57.7247, 10.56347], country: "DK", parent: "Skagen", size: null, hub: false, station: "Frederiskhavnsvej", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Hirtshals": { pos: [57.59173, 9.96353], country: "DK", parent: null, size: "medium", hub: false, station: "Hirtshals Station", bus: "Hirtshals St.", ferry: "Hirtshals Havn", airport: null, category: "DK_Nordjylland" },
+        "Hjørring": { pos: [57.45637, 9.98567], country: "DK", parent: null, size: "medium", hub: true, station: "Hjørring Station", bus: "Hjørring Busterminal", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Hulsig": { pos: [57.65968, 10.46333], country: "DK", parent: null, size: "small", hub: false, station: "Hulsig Station", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Jerup": { pos: [57.53209, 10.41728], country: "DK", parent: null, size: "small", hub: false, station: "Jerup Station", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Kvissel": { pos: [57.47189, 10.41259], country: "DK", parent: null, size: "small", hub: false, station: "Kvissel Station", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Lindholm": { pos: [57.06692, 9.9049], country: "DK", parent: "Nørresundby", size: null, hub: false, station: "Lindholm Station", bus: "Lindholm St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Napstjert": { pos: [57.55456, 10.40834], country: "DK", parent: null, size: "small", hub: false, station: "Napstjert Trinbræt", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Rimmen": { pos: [57.50476, 10.44534], country: "DK", parent: null, size: "small", hub: false, station: "Rimmen Trinbræt", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Sindal": { pos: [57.46999, 10.20219], country: "DK", parent: null, size: "small", hub: false, station: "Sindal Station", bus: "Sindal St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Skagen": { pos: [57.7242, 10.59173], country: "DK", parent: null, size: "medium", hub: false, station: "Skagen Station", bus: "Skagen St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Strandby": { pos: [57.48995, 10.49016], country: "DK", parent: null, size: "small", hub: false, station: "Strandby Station", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Thisted": { pos: [56.9542, 8.6853], country: "DK", parent: null, size: "medium", hub: false, station: "Thisted Station", bus: "Thisted St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Tolne": { pos: [57.48592, 10.31328], country: "DK", parent: null, size: "small", hub: false, station: "Tolne Station", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Vrå": { pos: [57.35475, 9.94219], country: "DK", parent: null, size: "small", hub: false, station: "Vrå Station", bus: "Vrå St.", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Aalborg Vestby": { pos: [57.05293, 9.90857], country: "DK", parent: "Aalborg", size: null, hub: false, station: "Aalborg Vestby St.", bus: "Vestbyen", ferry: null, airport: null, category: "DK_Nordjylland" },
+        "Ålbæk": { pos: [57.59239, 10.40827], country: "DK", parent: null, size: "medium", hub: false, station: "Ålbæk", bus: null, ferry: null, airport: null, category: "DK_Nordjylland" }
+    };
+
+
+
+
+
+
+
+
+
 };

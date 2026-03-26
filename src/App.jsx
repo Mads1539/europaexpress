@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
-  getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc
+  getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion
 } from 'firebase/firestore';
 import {
   getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged
@@ -97,6 +97,9 @@ const STOP_DURATION = 1;
 // =========================================================================
 // 4. HJÆLPE-ALGORITMER (Afstand og Rutesøgning)
 // =========================================================================
+
+
+
 
 const calculateDistance = (p1, p2) => {
   if (!p1 || !p2) return 0;
@@ -322,6 +325,8 @@ export default function App() {
   const currentStopRef = useRef(null);
   const requestRef = useRef();
   const [departedBuffer, setDepartedBuffer] = useState([]);
+  const [autoZoom, setAutoZoom] = useState(true);
+  const autoZoomRef = useRef(true);
 
   // --- Refs (Hukommelse der ikke genstarter skærmen ved ændring) ---
   const mapRef = useRef(null);
@@ -341,8 +346,13 @@ export default function App() {
   // 6. EFFECTS (Ting der sker automatisk i baggrunden)
   // =========================================================================
 
+  const [playerId] = useState(() => {
+    // Brug altid et nyt id per React-instans, gem det kun i state
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  });
 
-  const currentPlayer = gameState?.players?.find(p => p.id === user.uid);
+
+  const currentPlayer = gameState?.players?.find(p => p.id === playerId);
 
   // --- A. TIDSSYNKRONISERING ---
   // Denne blok sørger for, at uret tikker jævnt mellem server-opdateringer
@@ -411,7 +421,7 @@ export default function App() {
     console.log("Tryk registreret:", targetCityName, mode); // Tjek om denne dukker op i F12
 
     if (!user || !gameState) return;
-    const me = gameState.players.find(p => p.id === user.uid);
+    const me = gameState.players.find(p => p.id === playerId);
     if (!me || me.isTraveling) return;
 
     const startPos = CITIES[me.currentCity].pos;
@@ -438,7 +448,7 @@ export default function App() {
       console.log("Opdaterer Firebase på sti:", docId);
 
       await setDoc(sessionRef, {
-        players: gameState.players.map(p => p.id === user.uid ? {
+        players: gameState.players.map(p => p.id === playerId ? {
           ...p,
           isTraveling: true,
           destinationCity: targetCityName,
@@ -523,6 +533,13 @@ export default function App() {
         }
       };
       mapInstance.current.on('zoomend', handleZoom);
+      // Slå auto-zoom fra ved manuel interaktion
+      mapInstance.current.on('dragstart', () => { setAutoZoom(false); autoZoomRef.current = false; });
+      mapInstance.current.on('zoomstart', () => {
+        if (!mapInstance.current._zooming_programmatic) {
+          setAutoZoom(false); autoZoomRef.current = false;
+        }
+      });
       // Kør den med det samme for at sætte start-tilstanden
       setTimeout(handleZoom, 100);
 
@@ -863,6 +880,39 @@ export default function App() {
   }, [interpolatedTime, gameState?.players]);
 
 
+  // --- D. DYNAMISK AUTO-ZOOM ---
+  useEffect(() => { autoZoomRef.current = autoZoom; }, [autoZoom]);
+
+  useEffect(() => {
+    if (!mapInstance.current || !gameState?.players || !autoZoomRef.current) return;
+    const L = window.L;
+    if (!L) return;
+
+    const positions = gameState.players.map(p => {
+      const marker = markersRef.current[p.id];
+      if (marker) return marker.getLatLng();
+      const cityPos = CITIES[p.currentCity]?.pos;
+      return cityPos ? L.latLng(cityPos) : null;
+    }).filter(Boolean);
+
+    if (positions.length === 0) return;
+
+    if (positions.length === 1) {
+      mapInstance.current.panTo(positions[0], { animate: true, duration: 1.5 });
+    } else {
+      const bounds = L.latLngBounds(positions);
+      mapInstance.current.fitBounds(bounds, {
+        paddingTopLeft: [40, 80],
+        paddingBottomRight: [40, 40],
+        maxZoom: 10,
+        minZoom: 4,
+        animate: true,
+        duration: 1.5
+      });
+    }
+  }, [interpolatedTime, gameState?.players]);
+
+
   // SIKRER AT SPILLEREN ANKOMMER SELVOM HOST ER LAGGY ELLER OFFLINE
   useEffect(() => {
     // Tilføj et tjek for om gameState overhovedet er klar
@@ -877,7 +927,7 @@ export default function App() {
 
         updateDoc(sessionRef, {
           players: gameState.players.map(p =>
-          p.id === user.uid ? {
+          p.id === playerId ? {
             ...p,
             isTraveling: false,
             currentCity: p.destinationCity,
@@ -1012,35 +1062,53 @@ export default function App() {
   };
 
   const startJoin = async () => {
-    // Vi har fjernet useState herfra, da den skal ligge øverst i komponenten
-
     const ref = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', roomCode);
-    const snap = await getDoc(ref);
 
-    if (snap.exists()) {
-      const players = snap.data().players || [];
+    try {
+      const snap = await getDoc(ref);
 
-      // Tjek om spilleren allerede er med
-      if (!players.find(p => p.id === user.uid)) {
-        players.push({
-          id: user.uid,
+      if (!snap.exists()) {
+        alert("Koden findes ikke!");
+        return;
+      }
+
+      const data = snap.data();
+      const existingPlayers = data.players || [];
+
+      console.log("Eksisterende spillere FØR join:", existingPlayers);
+
+      const alreadyJoined = existingPlayers.find(p => p.id === playerId);
+
+      if (!alreadyJoined) {
+        const newPlayer = {
+          id: playerId,
           name: playerName || "Rejsende",
           avatar: playerAvatar,
           color: playerColor,
-          currentCity: "København", // Eller din startby
+          currentCity: "København",
           money: 5000,
           isTraveling: false,
-          history: [], // <--- TILFØJ DENNE LINJE
-          lastUpdate: Date.now()
-        });
+          history: [],
+        };
 
-        await updateDoc(ref, { players });
+        const updatedPlayers = [...existingPlayers, newPlayer];
+
+        await updateDoc(ref, { players: updatedPlayers });
+
+        // Verificer at det virkede
+        const verify = await getDoc(ref);
+        console.log("Spillere EFTER join:", verify.data().players);
+      } else {
+        console.log("Spiller allerede i session");
       }
 
       setRole('player');
+      setView('menu');
       listen(roomCode);
-    } else {
-      alert("Koden findes ikke!");
+
+    } catch (err) {
+      console.error("JOIN FEJL:", err);
+      alert("Fejl ved join: " + err.message);
     }
   };
 
@@ -1091,7 +1159,7 @@ export default function App() {
   };
 
   const travel = async (dep) => {
-    const me = gameState.players.find(p => p.id === user.uid);
+    const me = gameState.players.find(p => p.id === playerID);
     if (!me || me.isTraveling || me.money < dep.cost) return;
 
     const segments = [];
@@ -1162,7 +1230,7 @@ export default function App() {
       };
 
       const updatedPlayers = gameState.players.map(p =>
-      p.id === user.uid ? {
+      p.id === playerId ? {
         ...p,
         isTraveling: true,
         destinationCity: dep.destination,
@@ -1192,7 +1260,7 @@ export default function App() {
 
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
     await updateDoc(sessionRef, {
-      players: gameState.players.map(p => p.id === user.uid ? {
+      players: gameState.players.map(p => p.id === playerId ? {
         ...p,
         destinationCity: nextCity,
         segments: newSegments
@@ -1219,7 +1287,7 @@ export default function App() {
     return R * c;
   };
   const departures = React.useMemo(() => {
-    const me = gameState?.players?.find(p => p.id === user.uid);
+    const me = gameState?.players?.find(p => p.id === playerId);
     if (!me || me.isTraveling) return [];
 
     const list = [];
@@ -1747,7 +1815,14 @@ export default function App() {
         </div>
 
         {/* Debug Control */}
-        <div className="absolute bottom-6 left-6 z-[2000]">
+        <div className="absolute bottom-6 left-6 z-[2000] flex flex-col gap-2">
+        <button
+        onClick={() => setAutoZoom(v => !v)}
+        title={autoZoom ? "Slå auto-zoom fra" : "Slå auto-zoom til"}
+        className={`border p-4 rounded-full shadow-2xl transition-all ${autoZoom ? 'bg-blue-600 border-blue-400 text-white' : 'bg-slate-900 border-white/10 text-slate-400'}`}
+        >
+        <Navigation size={24} />
+        </button>
         <button onClick={() => setDebugOpen(!debugOpen)} className="bg-slate-900 border border-white/10 p-4 rounded-full shadow-2xl text-blue-400">
         <Settings size={24} className={debugOpen ? 'rotate-90' : ''} />
         </button>
@@ -1954,15 +2029,14 @@ export default function App() {
 
   // --- F. Spillerskærm ---
 
-  if (!currentPlayer) return null;
+  // --- F. Spillerskærm ---
 
-  const currentCityData = CITIES[currentPlayer.currentCity];
-
-  if (currentPlayer.isTraveling && (!currentPlayer.segments || currentPlayer.segments?.length === 0)) {
+  if (!currentPlayer) {
     return (
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
       <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-      <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Forbereder rejse-data...</p>
+      <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Forbinder til session...</p>
+      <p className="text-slate-600 text-[9px]">uid: {user?.uid?.slice(0,8)}</p>
       </div>
     );
   }
@@ -2102,7 +2176,7 @@ export default function App() {
           ))}
           </div>
           <p className="text-[8px] font-mono text-slate-400 tracking-[0.4em] uppercase">
-          {activeRoute.label}-{user.uid.slice(0,12).toUpperCase()}
+          {activeRoute.label}-{playerId.slice(0,12).toUpperCase()}
           </p>
           </div>
           </div>
@@ -2134,7 +2208,7 @@ export default function App() {
             onClick={async () => {
               const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
               await updateDoc(sessionRef, {
-                players: gameState.players.map(p => p.id === user.uid ? { ...p, isTraveling: false, segments: null } : p)
+                players: gameState.players.map(p => p.id === playerId ? { ...p, isTraveling: false, segments: null } : p)
               });
             }}
             className="mt-4 w-full py-2 bg-red-500/20 border border-red-500/50 text-red-400 rounded uppercase font-black"
