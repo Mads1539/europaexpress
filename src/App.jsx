@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { COUNTRY_DATA } from './data/countries.js'; // Use relative path
 import { JOB_POOL, JOB_COUNT_BY_SIZE, JOB_REFRESH_INTERVAL } from './data/jobs.js';
+import { MiniGame } from './components/MiniGame.jsx';
 
 // =========================================================================
 // 1. DATA-PROCESSERING (Klargøring af lande, byer og linjer)
@@ -356,6 +357,7 @@ export default function App() {
   const [currentEventIndex, setCurrentEventIndex] = useState(0);
   const [eventResults, setEventResults] = useState([]); // gemmer valg undervejs
   const [jackpotEvent, setJackpotEvent] = useState(null);
+  const [showMiniGame, setShowMiniGame] = useState(false);
 
   // --- Refs (Hukommelse der ikke genstarter skærmen ved ændring) ---
   const mapRef = useRef(null);
@@ -392,21 +394,13 @@ export default function App() {
     if (!currentPlayer?.currentJob) return;
     if ((gameState?.gameMinutes ?? 0) < currentPlayer.currentJob.endTime) return;
     if (jobScreen === 'working') {
-      // Tjek for jackpot
       if (Math.random() < JACKPOT_CHANCE) {
         const j = JACKPOT_EVENTS[Math.floor(Math.random() * JACKPOT_EVENTS.length)];
         setJackpotEvent({ ...j, choiceA: { label: 'Tag pengene', payBonus: j.payBonus, flavor: j.flavor }, choiceB: { label: 'Lad dem ligge', payBonus: 0, flavor: 'Du er for ærlig til det.' } });
       }
       setSelectedJob(currentPlayer.currentJob);
-      setJobScreen('event');
-    }
-  }, [gameState?.gameMinutes, currentPlayer?.currentJob]);
-
-  useEffect(() => {
-    if (!currentPlayer?.currentJob) return;
-    if ((gameState?.gameMinutes ?? 0) >= currentPlayer.currentJob.endTime) {
-      setSelectedJob(currentPlayer.currentJob);
-      setJobScreen('event');
+      setShowMiniGame(true); // ← NY LINJE
+      setJobScreen('working'); // forbliv på working så mini-spillet vises
     }
   }, [gameState?.gameMinutes, currentPlayer?.currentJob]);
 
@@ -1376,7 +1370,7 @@ export default function App() {
       setJobMarket(updated);
 
       const endTime = (gameState?.gameMinutes ?? 0) + (job.durationHours * 60);
-      await updateDoc(playerRef, { currentJob: { ...job, endTime } });
+      await setDoc(playerRef, { currentJob: { ...job, endTime } }, { merge: true });
 
       setSelectedJob(job);
       setCurrentEventIndex(0);
@@ -1414,7 +1408,8 @@ export default function App() {
 
     // ── UDBETALING ─────────────────────────────────────────────
     const totalBonus = newResults.reduce((sum, r) => sum + r.bonus, 0);
-    const totalPay = Math.max(0, (selectedJob.pay ?? 0) + totalBonus);
+    const miniBonus = jobEventChoice?.miniGameBonus ?? 0;
+    const totalPay = Math.max(0, (selectedJob.pay ?? 0) + totalBonus + miniBonus);
 
     await updateDoc(playerRef, {
       money: (currentPlayer.money ?? 0) + totalPay,
@@ -3354,34 +3349,65 @@ export default function App() {
 
         {/* ══ ARBEJDER ═══════════════════════════════════════════════ */}
         {jobScreen === 'working' && selectedJob && (
-          <div className="flex-1 flex flex-col justify-center items-center p-8 gap-5 text-center">
-          <div className="relative">
-          <div className="text-6xl">{selectedJob.emoji}</div>
-          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping" />
-          </div>
-          <div>
-          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Du arbejder nu</div>
-          <div className="font-black text-2xl uppercase text-white leading-none">{selectedJob.title}</div>
-          <div className="text-slate-500 text-xs mt-1">{currentPlayer.currentCity}</div>
-          </div>
-          <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3">
-          <div className="flex justify-between items-center">
-          <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
-          <span className="font-black text-green-400">{selectedJob.pay}€</span>
-          </div>
-          <div className="flex justify-between items-center">
-          <span className="text-[9px] font-black uppercase text-slate-500">Færdig kl.</span>
-          <span className="font-black text-white tabular-nums">{formatTime(currentPlayer.currentJob?.endTime ?? 0)}</span>
-          </div>
-          <div className="h-px bg-white/5" />
-          <div className="text-[9px] text-slate-600 uppercase font-black text-center">
-          {selectedJob.events?.length ?? 1} hændelse{(selectedJob.events?.length ?? 1) !== 1 ? 'r' : ''} venter på dig…
-          </div>
-          </div>
-          <div className="text-[9px] text-slate-600 uppercase font-black">Du kan se afgange imens</div>
+          <div className="flex-1 flex flex-col">
+          {showMiniGame ? (
+            <MiniGame
+            job={selectedJob}
+            city={currentPlayer.currentCity}
+            onComplete={(bonus) => {
+              setShowMiniGame(false);
+              setJobEventChoice(prev => ({ ...prev, miniGameBonus: bonus }));
+              setJobScreen('event');
+            }}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col justify-center items-center p-8 gap-5 text-center">
+            <div className="relative">
+            <div className="text-6xl">{selectedJob.emoji}</div>
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping" />
+            </div>
+            <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Du arbejder nu</div>
+            <div className="font-black text-2xl uppercase text-white leading-none">{selectedJob.title}</div>
+            <div className="text-slate-500 text-xs mt-1">{currentPlayer.currentCity}</div>
+            </div>
+            <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3">
+            <div className="flex justify-between items-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
+            <span className="font-black text-green-400">{selectedJob.pay}€</span>
+            </div>
+            <div className="flex justify-between items-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Færdig kl.</span>
+            <div className="flex justify-between items-center">
+            <span className="text-[9px] font-black uppercase text-slate-500">Tid tilbage</span>
+            <span className="font-black text-white tabular-nums">
+            {(() => {
+              const left = (currentPlayer.currentJob?.endTime ?? 0) - (gameState?.gameMinutes ?? 0);
+              if (left <= 0) return 'Færdig!';
+              const h = Math.floor(left / 60);
+              const m = Math.floor(left % 60);
+              return h > 0 ? `${h}t ${m}m` : `${m}m`;
+            })()}
+            </span>
+            </div>
+            <span className="font-black text-white tabular-nums">{formatTime(currentPlayer.currentJob?.endTime ?? 0)}</span>
+            </div>
+            <div className="h-px bg-white/5" />
+            <div className="text-[9px] text-slate-600 uppercase font-black text-center">
+            Mini-spil + {selectedJob.events?.length ?? 1} hændelse{(selectedJob.events?.length ?? 1) !== 1 ? 'r' : ''} venter…
+            </div>
+            </div>
+            <button
+            onClick={() => setShowMiniGame(true)}
+            className="w-full py-4 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] font-black uppercase text-sm tracking-widest transition-all"
+            >
+            🎮 Start mini-spil tidligt
+            </button>
+            <div className="text-[9px] text-slate-600 uppercase font-black">Eller vent til du er færdig</div>
+            </div>
+          )}
           </div>
         )}
-
         {/* ══ HÆNDELSE ═══════════════════════════════════════════════ */}
         {jobScreen === 'event' && selectedJob && (() => {
           const events = selectedJob.events || [];
@@ -3445,6 +3471,18 @@ export default function App() {
           <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3 text-left">
           <div className="flex justify-between items-center">
           <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
+
+          {(jobEventChoice?.miniGameBonus ?? 0) > 0 && (
+            <div className="flex justify-between items-center">
+            <span className="text-[9px] bg-amber-500/20 text-amber-400 font-black uppercase px-1.5 py-0.5 rounded-full">
+            🎮 Mini-spil bonus
+            </span>
+            <span className="font-black text-amber-400">+{jobEventChoice.miniGameBonus}€</span>
+            </div>
+          )}
+
+
+
           <span className="font-black text-white">{selectedJob?.pay ?? 0}€</span>
           </div>
           {jobEventChoice.results?.map((r, i) => (
@@ -3493,19 +3531,39 @@ export default function App() {
     {/* BOTTOM TAB BAR */}
     {!currentPlayer.isTraveling && (
       <div className="bg-slate-900 border-t border-white/10 flex items-center justify-around pb-6 pt-2 px-2">
-      <button onClick={() => setPlayerTab('info')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${playerTab === 'info' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
+      <button
+      onClick={() => !currentPlayer.currentJob && setPlayerTab('info')}
+      className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${
+        playerTab === 'info' ? 'text-blue-500 scale-110'
+        : currentPlayer.currentJob ? 'text-slate-700 cursor-not-allowed'
+        : 'text-slate-500'
+      }`}>
       <Info size={20} />
       <span className="text-[8px] font-black uppercase">Info</span>
       </button>
-      <button onClick={() => setPlayerTab('departures')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${playerTab === 'departures' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
+      <button
+      onClick={() => !currentPlayer.currentJob && setPlayerTab('departures')}
+      className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${
+        playerTab === 'departures' ? 'text-blue-500 scale-110'
+        : currentPlayer.currentJob ? 'text-slate-700 cursor-not-allowed'
+        : 'text-slate-500'
+      }`}>
       <Ticket size={20} />
       <span className="text-[8px] font-black uppercase">Afgange</span>
+      {currentPlayer.currentJob && (
+        <span className="text-[7px] font-black uppercase text-slate-700">Låst</span>
+      )}
       </button>
-      <button onClick={() => setPlayerTab('work')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${playerTab === 'work' ? 'text-blue-500 scale-110' : 'text-slate-500 opacity-50'}`}>
+      <button
+      onClick={() => setPlayerTab('work')}
+      className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${
+        playerTab === 'work' ? 'text-blue-500 scale-110' : 'text-slate-500'
+      }`}>
       <Users size={20} />
       <span className="text-[8px] font-black uppercase">Arbejde</span>
       </button>
       </div>
+
     )}
     <style>{`@keyframes move { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
     </div>
