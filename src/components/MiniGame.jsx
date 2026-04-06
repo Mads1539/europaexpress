@@ -48,7 +48,11 @@ const MiniGameShell = ({ title, emoji, instruction, timeLimit = 15, children, sc
 
 const calcBonus = (score, maxScore, maxBonus) => {
   if (maxScore === 0) return 0;
-  return Math.round((score / maxScore) * maxBonus);
+  const pct = score / maxScore;
+  if (pct >= 0.8) return maxBonus;
+  if (pct >= 0.5) return Math.round(maxBonus * 0.33);
+  if (pct >= 0.2) return 0;
+  return -Math.round(maxBonus * 0.4); // straf ved dårlig score
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -434,21 +438,16 @@ const RouteEngine = ({ onComplete }) => {
 // ═══════════════════════════════════════════════════════════
 // HOVED-EXPORT — vælger engine baseret på job-type
 // ═══════════════════════════════════════════════════════════
-const JOB_MINIGAME_MAP = {
-  'cph_guide': 'quiz', 'par_guide': 'quiz', 'rom_guide': 'quiz',
-  'cph_waiter': 'memory', 'par_waiter': 'memory', 'hh_fish': 'memory', 'rom_pizza': 'memory', 'def_barista': 'memory',
-  'zrh_bank': 'sort',
-  'hh_dock': 'stack', 'hh_harbormaster': 'stack', 'cph_harbor': 'stack',
-  'ams_courier': 'route', 'cph_bike': 'route',
-};
-
-const DEFAULT_MINIGAME_BY_TIER = { 1: 'memory', 2: 'sort' };
+const MINIGAME_TYPES = ['quiz', 'memory', 'sort', 'stack', 'route'];
 
 export const MiniGame = ({ job, city, onComplete }) => {
-  // FIX: log job.id så vi kan se hvad der matcher
-  const baseId = job?.id?.split('_').slice(0, 2).join('_') ?? '';
-  const type = JOB_MINIGAME_MAP[job?.id] || JOB_MINIGAME_MAP[baseId] || DEFAULT_MINIGAME_BY_TIER[job?.tier] || 'memory';
-  console.log('🎮 job.id:', job?.id, '| baseId:', baseId, '| type:', type);
+  // Vælg spiltype deterministisk baseret på job.id så det altid er det samme for samme job
+  const type = (() => {
+    if (!job?.id) return 'memory';
+    const hash = job.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return MINIGAME_TYPES[hash % MINIGAME_TYPES.length];
+  })();
+  console.log('🎮 job.id:', job?.id, '| type:', type);
 
   const engines = {
     quiz: <QuizEngine city={city} onComplete={onComplete} />,
