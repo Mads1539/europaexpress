@@ -12,7 +12,8 @@ import {
   User, CheckCircle2, Ticket, AlertTriangle, XCircle, Info, Trophy, Flag, Activity
 } from 'lucide-react';
 import { COUNTRY_DATA } from './data/countries.js'; // Use relative path
-import { JOB_POOL, JOB_COUNT_BY_SIZE, JOB_REFRESH_INTERVAL } from './data/jobs.js';
+import { JOB_CATEGORIES, JOB_COUNT_BY_SIZE, JOB_REFRESH_INTERVAL, JACKPOT_CHANCE, JACKPOT_EVENTS, getAvailableCategories, generateJobListings, getLevelFromXP, getXPToNextLevel } from './data/jobs.js';
+
 import { MiniGame } from './components/MiniGame.jsx';
 
 // =========================================================================
@@ -404,11 +405,29 @@ export default function App() {
       const totalPay = Math.max(0, (selectedJob.pay ?? 0) + miniBonus);
       const docId = gameState.code || 'GLOBAL';
       const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', docId);
+
+      // +1 XP i den rigtige kategori
+      const category = selectedJob.category;
+      const currentLevels = currentPlayer?.jobLevels ?? {};
+      const currentCatData = currentLevels[category] ?? { xp: 0, level: 1 };
+      const newXP = (currentCatData.xp ?? 0) + 1;
+      const newLevel = getLevelFromXP(newXP);
+      const updatedLevels = {
+        ...currentLevels,
+        [category]: { xp: newXP, level: newLevel },
+      };
+
       setDoc(sessionRef, {
         players: gameState.players.map(p =>
-        p.id === playerId ? { ...p, money: (p.money ?? 0) + totalPay, currentJob: null } : p
+        p.id === playerId ? {
+          ...p,
+          money: (p.money ?? 0) + totalPay,
+                                       currentJob: null,
+                                       jobLevels: updatedLevels,
+        } : p
         )
       }, { merge: true });
+
       setJobEventChoice(prev => ({ ...(prev ?? {}), totalPay, results: [] }));
       setJobScreen('payout');
     }
@@ -781,25 +800,25 @@ export default function App() {
   }, [leafletReady, role, gameState?.status, gameState?.goalCity, setSelectedCity]);
 
 
-  const fetchOrRefreshJobMarket = async (cityName, gameMinutes) => {
+  const fetchOrRefreshJobMarket = async (cityName, gameTime) => {
     const city = CITIES[cityName];
-    const effectiveCity = city?.parent ? CITIES[city.parent] : city;
-    const size = effectiveCity?.size || city?.size || 'small';
+    const effectiveCityName = city?.parent || cityName;
+    const effectiveCity = CITIES[effectiveCityName] ?? city;
+    const size = effectiveCity?.size || 'small';
     const count = JOB_COUNT_BY_SIZE[size] || 1;
-    const effectiveCityName = CITIES[cityName]?.parent || cityName;
+
     const ref = doc(db, `artifacts/${appId}/public/data/jobs`, effectiveCityName);
     const snap = await getDoc(ref);
 
     if (snap.exists()) {
       const data = snap.data();
-      const age = gameMinutes - (data.refreshedAt || 0);
-      // Returner eksisterende marked hvis det ikke er forældet
+      const age = (gameTime ?? 0) - (data.refreshedAt || 0);
       if (age < JOB_REFRESH_INTERVAL) return data.listings;
     }
 
-    // Opret eller forny jobmarkedet
-    const listings = drawJobs(cityName, count);
-    await setDoc(ref, { refreshedAt: gameMinutes ?? 0, listings });
+    const playerLevels = currentPlayer?.jobLevels ?? {};
+    const listings = generateJobListings(effectiveCity, playerLevels, count);
+    await setDoc(ref, { refreshedAt: gameTime ?? 0, listings });
     return listings;
   };
 
@@ -1369,8 +1388,9 @@ export default function App() {
 
 
   const handleTakeJob = async (job, choice = null) => {
-    const effectiveCityName = CITIES[currentPlayer.currentCity]?.parent || currentPlayer.currentCity;
-    const cityRef = doc(db, `artifacts/${appId}/public/data/jobs`, currentPlayer.currentCity);
+    const city = CITIES[currentPlayer.currentCity];
+    const effectiveCityName = city?.parent || currentPlayer.currentCity;
+    const cityRef = doc(db, `artifacts/${appId}/public/data/jobs`, effectiveCityName);
     const docId = gameState.code || 'GLOBAL';
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', docId);
 
@@ -1400,39 +1420,6 @@ export default function App() {
       setJobScreen('working');
       return;
     }
-
-    const events = selectedJob.events || [];
-    const currentEvent = jackpotEvent ? jackpotEvent : events[currentEventIndex];
-    const chosen = choice === 'A' ? currentEvent.choiceA : currentEvent.choiceB;
-    const bonus = chosen?.payBonus ?? currentEvent.payBonus ?? 0;
-    const newResults = [...eventResults, {
-      prompt: currentEvent.prompt,
-      choiceLabel: chosen?.label ?? '—',
-      flavor: chosen?.flavor ?? currentEvent.flavor ?? '',
-      bonus,
-      isJackpot: !!jackpotEvent,
-    }];
-    setEventResults(newResults);
-    setJackpotEvent(null);
-
-    const nextIndex = currentEventIndex + 1;
-    if (!jackpotEvent && nextIndex < events.length) {
-      setCurrentEventIndex(nextIndex);
-      return;
-    }
-
-    const totalBonus = newResults.reduce((sum, r) => sum + r.bonus, 0);
-    const miniBonus = jobEventChoice?.miniGameBonus ?? 0;
-    const totalPay = Math.max(0, (selectedJob.pay ?? 0) + totalBonus + miniBonus);
-
-    await setDoc(sessionRef, {
-      players: gameState.players.map(p =>
-      p.id === playerId ? { ...p, money: (p.money ?? 0) + totalPay, currentJob: null } : p
-      )
-    }, { merge: true });
-
-    setJobEventChoice(prev => ({ ...prev, totalPay, totalBonus, miniGameBonus: miniBonus, results: newResults }));
-    setJobScreen('payout');
   };
 
   const formatTime = (t) => {
@@ -3234,52 +3221,92 @@ export default function App() {
           <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Jobmarked</div>
           <div className="font-black text-lg uppercase text-white leading-none mt-0.5">{currentPlayer.currentCity}</div>
           </div>
+
           <div className="p-4 space-y-3">
           {jobMarket.length === 0 && (
             <div className="text-center opacity-30 italic uppercase font-black text-xs tracking-widest pt-12">
             Ingen jobs tilgængelige
             </div>
           )}
-          {jobMarket.map(job => {
-            const taken = job.takenBy !== null;
-            const mine = job.takenBy === playerId;
-            const locked = job.unlocksFrom && (currentPlayer.jobHistory?.[job.unlocksFrom.jobId] ?? 0) < job.unlocksFrom.count;
+
+          {/* Grupper jobs efter kategori */}
+          {Object.entries(
+            jobMarket.reduce((acc, job) => {
+              if (!acc[job.category]) acc[job.category] = [];
+              acc[job.category].push(job);
+              return acc;
+            }, {})
+          ).map(([categoryKey, jobs]) => {
+            const cat = JOB_CATEGORIES[categoryKey];
+            const playerCatData = currentPlayer?.jobLevels?.[categoryKey] ?? { xp: 0, level: 1 };
+            const playerLevel = playerCatData.level ?? 1;
+            const xp = playerCatData.xp ?? 0;
+            const xpToNext = getXPToNextLevel(xp);
+
             return (
-              <button
-              key={job.instanceId}
-              disabled={taken || locked}
-              onClick={() => { setSelectedJob(job); setJobScreen('detail'); }}
-              className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                locked ? 'opacity-40 border-transparent bg-slate-800/40 cursor-not-allowed'
-                : mine ? 'bg-blue-600/10 border-blue-500/30'
-                : taken ? 'opacity-25 border-transparent bg-slate-800/40 cursor-not-allowed'
-                : 'bg-white/5 border-white/10 hover:bg-blue-600/10 hover:border-blue-500/50 active:scale-[0.98]'
-              }`}
-              >
-              <div className="flex justify-between items-start gap-4">
-              <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xl">{job.emoji}</span>
-              <span className="font-black uppercase text-white text-sm leading-none">{job.title}</span>
-              {locked && (
-                <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">
-                🔒 {job.unlocksFrom.count - (currentPlayer.jobHistory?.[job.unlocksFrom.jobId] ?? 0)} jobs mangler
-                </span>
-              )}
-              {mine && <span className="text-[8px] bg-blue-500/20 text-blue-400 font-black uppercase px-1.5 py-0.5 rounded-full">Aktivt</span>}
-              {taken && !mine && <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">Taget</span>}
+              <div key={categoryKey} className="space-y-2">
+              {/* Kategori-header */}
+              <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+              <span className="text-base">{cat.emoji}</span>
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{cat.label}</span>
               </div>
-              <div className="text-[10px] text-slate-500 mt-1 leading-snug">{job.description}</div>
-              <div className="flex items-center gap-1 mt-2 text-[9px] text-slate-500 uppercase font-black">
-              <Clock size={9} /> {job.durationHours}t · {job.events?.length ?? 1} hændelse{job.events?.length !== 1 ? 'r' : ''}
+              <div className="flex items-center gap-2">
+              <div className="flex gap-0.5">
+              {[1,2,3].map(l => (
+                <div key={l} className={`w-4 h-1.5 rounded-full ${l <= playerLevel ? 'bg-blue-500' : 'bg-slate-700'}`} />
+              ))}
+              </div>
+              <span className="text-[8px] font-black text-slate-500 uppercase">
+              Lv.{playerLevel}
+              {xpToNext !== null ? ` · ${xpToNext} XP til næste` : ' · MAX'}
+              </span>
               </div>
               </div>
-              <div className="text-right shrink-0">
-              <div className="font-black text-green-400 text-xl leading-none">{job.pay}€</div>
-              <div className="text-[9px] text-slate-600 uppercase mt-0.5">løn</div>
+
+              {/* Jobs i denne kategori */}
+              {jobs.map(job => {
+                const taken = job.takenBy !== null;
+                const mine = job.takenBy === playerId;
+                const locked = job.locked;
+
+                return (
+                  <button
+                  key={job.instanceId}
+                  disabled={taken || locked}
+                  onClick={() => { setSelectedJob(job); setJobScreen('detail'); }}
+                  className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                    locked ? 'opacity-40 border-transparent bg-slate-800/40 cursor-not-allowed'
+                    : mine ? 'bg-blue-600/10 border-blue-500/30'
+                    : taken ? 'opacity-25 border-transparent bg-slate-800/40 cursor-not-allowed'
+                    : 'bg-white/5 border-white/10 hover:bg-blue-600/10 hover:border-blue-500/50 active:scale-[0.98]'
+                  }`}
+                  >
+                  <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black uppercase text-white text-sm leading-none">{job.title}</span>
+                  {locked && (
+                    <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">
+                    🔒 Kræver Lv.{job.requiredLevel}
+                    </span>
+                  )}
+                  {mine && <span className="text-[8px] bg-blue-500/20 text-blue-400 font-black uppercase px-1.5 py-0.5 rounded-full">Aktivt</span>}
+                  {taken && !mine && <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">Taget</span>}
+                  </div>
+                  <div className="flex items-center gap-1 mt-2 text-[9px] text-slate-500 uppercase font-black">
+                  <Clock size={9} /> {job.durationHours}t · 🎮 {cat?.miniGame ?? '?'}
+                  </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                  <div className="font-black text-green-400 text-xl leading-none">{job.pay}€</div>
+                  <div className="text-[9px] text-slate-600 uppercase mt-0.5">løn</div>
+                  </div>
+                  </div>
+                  </button>
+                );
+              })}
               </div>
-              </div>
-              </button>
             );
           })}
           </div>
@@ -3306,8 +3333,6 @@ export default function App() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <p className="text-slate-400 text-sm leading-relaxed">{selectedJob.description}</p>
-
           <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
           <div className="text-[9px] font-black uppercase text-slate-500 mb-1">Grundløn</div>
@@ -3319,36 +3344,36 @@ export default function App() {
           </div>
           </div>
 
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
-          <div className="text-[9px] font-black uppercase text-slate-500 mb-2">Hvad sker der?</div>
-          <div className="space-y-2">
-          {selectedJob.events?.map((e, i) => (
-            <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
-            <span className="text-slate-600 font-black shrink-0">{i + 1}.</span>
-            <span>{e.prompt}</span>
-            </div>
-          ))}
-          <div className="flex items-start gap-2 text-xs text-amber-500/70 mt-2">
-          <span>⭐</span>
-          <span>Der kan ske noget uventet undervejs…</span>
-          </div>
-          </div>
-          </div>
+          {/* Level-info */}
+          {(() => {
+            const cat = JOB_CATEGORIES[selectedJob.category];
+            const playerCatData = currentPlayer?.jobLevels?.[selectedJob.category] ?? { xp: 0, level: 1 };
+            const xp = playerCatData.xp ?? 0;
+            const xpToNext = getXPToNextLevel(xp);
+            return (
+              <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-2">
+              <div className="text-[9px] font-black uppercase text-slate-500">Din erfaring — {cat?.label}</div>
+              <div className="flex items-center justify-between">
+              <div className="flex gap-1">
+              {[1,2,3].map(l => (
+                <div key={l} className={`w-6 h-2 rounded-full ${l <= (playerCatData.level ?? 1) ? 'bg-blue-500' : 'bg-slate-700'}`} />
+              ))}
+              </div>
+              <span className="text-[9px] font-black text-slate-400 uppercase">
+              {xpToNext !== null ? `+1 XP · ${xpToNext} til næste level` : '⭐ MAX LEVEL'}
+              </span>
+              </div>
+              <div className="text-[10px] text-slate-500">Dette job giver +1 XP i {cat?.label} ved færdiggørelse.</div>
+              </div>
+            );
+          })()}
 
-          {selectedJob.unlocksFrom && (
-            <div className="bg-blue-900/20 rounded-2xl p-4 border border-blue-500/20">
-            <div className="text-[9px] font-black uppercase text-blue-400 mb-1">Låser op for</div>
-            <div className="text-xs text-slate-400">Tag dette job {selectedJob.unlocksFrom.count} gange for at låse næste tier op</div>
-            <div className="mt-2 flex gap-1">
-            {Array.from({ length: selectedJob.unlocksFrom.count }).map((_, i) => (
-              <div key={i} className={`h-1.5 flex-1 rounded-full ${
-                i < (currentPlayer.jobHistory?.[selectedJob.unlocksFrom.jobId] ?? 0)
-                ? 'bg-blue-500' : 'bg-slate-700'
-              }`} />
-            ))}
-            </div>
-            </div>
-          )}
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
+          <div className="text-[9px] font-black uppercase text-slate-500 mb-2">Mini-spil</div>
+          <div className="text-sm text-slate-300">
+          Under jobbet spiller du et <span className="text-amber-400 font-black">{JOB_CATEGORIES[selectedJob.category]?.miniGame ?? '?'}</span>-spil for at tjene bonus.
+          </div>
+          </div>
           </div>
 
           <div className="p-4 border-t border-white/5">
@@ -3442,6 +3467,28 @@ export default function App() {
           <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1">Jobbet er færdigt</div>
           <div className="font-black text-5xl text-green-400 leading-none">+{jobEventChoice.totalPay}€</div>
           </div>
+
+          {/* XP feedback */}
+          {selectedJob?.category && (() => {
+            const cat = JOB_CATEGORIES[selectedJob.category];
+            const newXP = (currentPlayer?.jobLevels?.[selectedJob.category]?.xp ?? 0);
+            const newLevel = getLevelFromXP(newXP);
+            const xpToNext = getXPToNextLevel(newXP);
+            return (
+              <div className="w-full bg-blue-900/20 rounded-2xl p-4 border border-blue-500/20 text-left space-y-2">
+              <div className="text-[9px] font-black uppercase text-blue-400">+1 XP — {cat?.label}</div>
+              <div className="flex gap-1">
+              {[1,2,3].map(l => (
+                <div key={l} className={`h-2 flex-1 rounded-full ${l <= newLevel ? 'bg-blue-500' : 'bg-slate-700'}`} />
+              ))}
+              </div>
+              <div className="text-[9px] text-slate-400">
+              {xpToNext !== null ? `${xpToNext} XP mere til næste level` : '⭐ Du er på MAX level i denne kategori!'}
+              </div>
+              </div>
+            );
+          })()}
+
           <div className="w-full bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3 text-left">
           <div className="flex justify-between items-center">
           <span className="text-[9px] font-black uppercase text-slate-500">Grundløn</span>
@@ -3484,6 +3531,9 @@ export default function App() {
     )}
     </div>
 
+
+
+
     {/* BOTTOM TAB BAR */}
     {!currentPlayer.isTraveling && (
       <div className="bg-slate-900 border-t border-white/10 flex items-center justify-around pb-6 pt-2 px-2">
@@ -3518,8 +3568,16 @@ export default function App() {
       <Users size={20} />
       <span className="text-[8px] font-black uppercase">Arbejde</span>
       </button>
+      <button
+      onClick={() => setPlayerTab('profile')}
+      className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-xl transition-all ${
+        playerTab === 'profile' ? 'text-blue-500 scale-110' : 'text-slate-500'
+      }`}>
+      <User size={20} />
+      <span className="text-[8px] font-black uppercase">Profil</span>
+      </button>
       </div>
-
+    )}
     )}
     <style>{`@keyframes move { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
     </div>
