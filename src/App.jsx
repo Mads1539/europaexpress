@@ -3217,19 +3217,19 @@ export default function App() {
         {/* ══ JOBMARKED ══════════════════════════════════════════════ */}
         {jobScreen === 'listing' && (
           <div className="flex-1 overflow-y-auto">
-          <div className="p-4 pb-2 border-b border-white/5">
+          {/* Header */}
+          <div className="p-4 pb-3 border-b border-white/5">
           <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Jobmarked</div>
           <div className="font-black text-lg uppercase text-white leading-none mt-0.5">{currentPlayer.currentCity}</div>
           </div>
 
-          <div className="p-4 space-y-3">
+          <div className="p-4 space-y-6">
           {jobMarket.length === 0 && (
             <div className="text-center opacity-30 italic uppercase font-black text-xs tracking-widest pt-12">
             Ingen jobs tilgængelige
             </div>
           )}
 
-          {/* Grupper jobs efter kategori */}
           {Object.entries(
             jobMarket.reduce((acc, job) => {
               if (!acc[job.category]) acc[job.category] = [];
@@ -3248,23 +3248,22 @@ export default function App() {
               {/* Kategori-header */}
               <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-              <span className="text-base">{cat.emoji}</span>
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{cat.label}</span>
+              <span className="text-lg">{cat.emoji}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{cat.label}</span>
               </div>
               <div className="flex items-center gap-2">
               <div className="flex gap-0.5">
               {[1,2,3].map(l => (
-                <div key={l} className={`w-4 h-1.5 rounded-full ${l <= playerLevel ? 'bg-blue-500' : 'bg-slate-700'}`} />
+                <div key={l} className={`w-5 h-1.5 rounded-full transition-all ${l <= playerLevel ? 'bg-blue-500' : 'bg-slate-700'}`} />
               ))}
               </div>
               <span className="text-[8px] font-black text-slate-500 uppercase">
-              Lv.{playerLevel}
-              {xpToNext !== null ? ` · ${xpToNext} XP til næste` : ' · MAX'}
+              Lv.{playerLevel}{xpToNext !== null ? ` · ${xpToNext}xp` : ' · MAX'}
               </span>
               </div>
               </div>
 
-              {/* Jobs i denne kategori */}
+              {/* Jobs */}
               {jobs.map(job => {
                 const taken = job.takenBy !== null;
                 const mine = job.takenBy === playerId;
@@ -3276,30 +3275,33 @@ export default function App() {
                   disabled={taken || locked}
                   onClick={() => { setSelectedJob(job); setJobScreen('detail'); }}
                   className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                    locked ? 'opacity-40 border-transparent bg-slate-800/40 cursor-not-allowed'
+                    locked ? 'opacity-40 border-transparent bg-slate-800/30 cursor-not-allowed'
                     : mine ? 'bg-blue-600/10 border-blue-500/30'
                     : taken ? 'opacity-25 border-transparent bg-slate-800/40 cursor-not-allowed'
                     : 'bg-white/5 border-white/10 hover:bg-blue-600/10 hover:border-blue-500/50 active:scale-[0.98]'
                   }`}
                   >
-                  <div className="flex justify-between items-start gap-4">
+                  <div className="flex justify-between items-center gap-4">
                   <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-black uppercase text-white text-sm leading-none">{job.title}</span>
                   {locked && (
                     <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">
-                    🔒 Kræver Lv.{job.requiredLevel}
+                    🔒 Lv.{job.requiredLevel}
                     </span>
                   )}
-                  {mine && <span className="text-[8px] bg-blue-500/20 text-blue-400 font-black uppercase px-1.5 py-0.5 rounded-full">Aktivt</span>}
+                  {mine && <span className="text-[8px] bg-blue-500/20 text-blue-400 font-black uppercase px-1.5 py-0.5 rounded-full">● Aktivt</span>}
                   {taken && !mine && <span className="text-[8px] bg-slate-700/50 text-slate-500 font-black uppercase px-1.5 py-0.5 rounded-full">Taget</span>}
                   </div>
-                  <div className="flex items-center gap-1 mt-2 text-[9px] text-slate-500 uppercase font-black">
-                  <Clock size={9} /> {job.durationHours}t · 🎮 {cat?.miniGame ?? '?'}
+                  <div className="flex items-center gap-3 mt-1.5">
+                  <span className="text-[9px] text-slate-500 font-black uppercase flex items-center gap-1">
+                  <Clock size={8} /> {job.durationHours}t
+                  </span>
+                  <span className="text-[9px] text-slate-600 font-black uppercase">🎮 mini-spil</span>
                   </div>
                   </div>
                   <div className="text-right shrink-0">
-                  <div className="font-black text-green-400 text-xl leading-none">{job.pay}€</div>
+                  <div className={`font-black text-xl leading-none ${locked ? 'text-slate-600' : 'text-green-400'}`}>{job.pay}€</div>
                   <div className="text-[9px] text-slate-600 uppercase mt-0.5">løn</div>
                   </div>
                   </div>
@@ -3321,7 +3323,7 @@ export default function App() {
           onClick={() => setJobScreen('listing')}
           className="flex items-center gap-2 text-blue-400 font-black uppercase text-[10px] tracking-widest mb-4 hover:text-blue-300"
           >
-          <RotateCcw size={12} /> Tilbage til jobmarkedet
+          <RotateCcw size={12} /> Tilbage
           </button>
           <div className="flex items-center gap-3">
           <span className="text-4xl">{selectedJob.emoji}</span>
@@ -3332,7 +3334,8 @@ export default function App() {
           </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {/* Løn + tid */}
           <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
           <div className="text-[9px] font-black uppercase text-slate-500 mb-1">Grundløn</div>
@@ -3344,34 +3347,38 @@ export default function App() {
           </div>
           </div>
 
-          {/* Level-info */}
+          {/* Erfaring */}
           {(() => {
             const cat = JOB_CATEGORIES[selectedJob.category];
             const playerCatData = currentPlayer?.jobLevels?.[selectedJob.category] ?? { xp: 0, level: 1 };
             const xp = playerCatData.xp ?? 0;
+            const level = playerCatData.level ?? 1;
             const xpToNext = getXPToNextLevel(xp);
             return (
-              <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-2">
-              <div className="text-[9px] font-black uppercase text-slate-500">Din erfaring — {cat?.label}</div>
-              <div className="flex items-center justify-between">
-              <div className="flex gap-1">
+              <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5 space-y-3">
+              <div className="text-[9px] font-black uppercase text-slate-500">{cat?.emoji} {cat?.label} — Din erfaring</div>
+              <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
               {[1,2,3].map(l => (
-                <div key={l} className={`w-6 h-2 rounded-full ${l <= (playerCatData.level ?? 1) ? 'bg-blue-500' : 'bg-slate-700'}`} />
+                <div key={l} className={`w-8 h-2 rounded-full transition-all ${l <= level ? 'bg-blue-500' : 'bg-slate-700'}`} />
               ))}
               </div>
-              <span className="text-[9px] font-black text-slate-400 uppercase">
-              {xpToNext !== null ? `+1 XP · ${xpToNext} til næste level` : '⭐ MAX LEVEL'}
-              </span>
+              <span className="text-[9px] font-black text-slate-400 uppercase">Level {level}</span>
               </div>
-              <div className="text-[10px] text-slate-500">Dette job giver +1 XP i {cat?.label} ved færdiggørelse.</div>
-              </div>
+              <div className="text-[10px] text-slate-500">
+              {xpToNext !== null
+                ? `Dette job giver +1 XP · ${xpToNext} XP tilbage til level ${level + 1}`
+                : '⭐ Du er på MAX level i denne kategori'}
+                </div>
+                </div>
             );
           })()}
 
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-white/5">
-          <div className="text-[9px] font-black uppercase text-slate-500 mb-2">Mini-spil</div>
-          <div className="text-sm text-slate-300">
-          Under jobbet spiller du et <span className="text-amber-400 font-black">{JOB_CATEGORIES[selectedJob.category]?.miniGame ?? '?'}</span>-spil for at tjene bonus.
+          {/* Mini-spil info */}
+          <div className="bg-amber-900/20 rounded-2xl p-4 border border-amber-500/20">
+          <div className="text-[9px] font-black uppercase text-amber-500 mb-1">🎮 Mini-spil bonus</div>
+          <div className="text-[10px] text-slate-400 leading-relaxed">
+          Mens du arbejder kan du spille et mini-spil for at tjene ekstra. God score giver bonus, dårlig score giver straf.
           </div>
           </div>
           </div>
@@ -3386,7 +3393,6 @@ export default function App() {
           </div>
           </div>
         )}
-
         {/* ══ ARBEJDER ═══════════════════════════════════════════════ */}
         {jobScreen === 'working' && selectedJob && (
           <div className="flex-1 flex flex-col">
@@ -3394,6 +3400,7 @@ export default function App() {
             <MiniGame
             job={selectedJob}
             city={currentPlayer.currentCity}
+            playerCountry={CITIES[currentPlayer.currentCity]?.country ?? 'DK'}
             onComplete={(bonus) => {
               setShowMiniGame(false);
               setJobEventChoice(prev => ({ ...(prev ?? {}), miniGameBonus: bonus }));
@@ -3529,9 +3536,92 @@ export default function App() {
       )}
       </>
     )}
+
+    {/* ══ PROFIL-TAB ════════════════════════════════════════════ */}
+    {playerTab === 'profile' && (
+      <div className="flex-1 overflow-y-auto">
+      <div className="p-4 pb-3 border-b border-white/5">
+      <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">Din profil</div>
+      <div className="font-black text-lg uppercase text-white leading-none mt-0.5">
+      {currentPlayer.name ?? 'Spiller'}
+      </div>
+      </div>
+
+      <div className="p-4 space-y-3">
+      <div className="text-[9px] font-black uppercase tracking-widest text-slate-500 px-1 mb-2">Erhvervserfaring</div>
+
+      {Object.entries(JOB_CATEGORIES).map(([key, cat]) => {
+        const playerCatData = currentPlayer?.jobLevels?.[key] ?? { xp: 0, level: 1 };
+        const level = playerCatData.level ?? 1;
+        const xp = playerCatData.xp ?? 0;
+        const xpToNext = getXPToNextLevel(xp);
+        const currentTitle = cat.levels[level - 1]?.title ?? cat.levels[0].title;
+        const nextTitle = cat.levels[level]?.title ?? null;
+
+        // Tjek om kategorien er tilgængelig i nuværende by
+        const cityData = CITIES[currentPlayer.currentCity];
+        const effectiveCityData = cityData?.parent ? CITIES[cityData.parent] ?? cityData : cityData;
+        const facilityAvailable = !cat.requiresFacility || effectiveCityData?.[cat.requiresFacility] !== null;
+
+        // XP progress inden for nuværende level
+        const xpThresholds = [0, 3, 8];
+        const currentThreshold = xpThresholds[level - 1] ?? 0;
+        const nextThreshold = xpThresholds[level] ?? 8;
+        const progressPct = level >= 3 ? 100 : Math.min(100, ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100);
+
+        return (
+          <div key={key} className={`rounded-2xl border p-4 transition-all ${
+            facilityAvailable ? 'bg-white/5 border-white/10' : 'bg-slate-900/50 border-white/5 opacity-50'
+          }`}>
+          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+          <span className="text-2xl">{cat.emoji}</span>
+          <div>
+          <div className="font-black text-white text-sm uppercase leading-none">{currentTitle}</div>
+          <div className="text-[9px] text-slate-500 uppercase font-black mt-0.5">{cat.label}</div>
+          </div>
+          </div>
+          <div className="text-right shrink-0">
+          <div className="font-black text-white text-sm">Lv.{level}</div>
+          {!facilityAvailable && (
+            <div className="text-[8px] text-slate-600 uppercase font-black mt-0.5">Ikke tilgængelig her</div>
+          )}
+          </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mt-3 space-y-1.5">
+          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+          <div
+          className={`h-full rounded-full transition-all ${level >= 3 ? 'bg-amber-500' : 'bg-blue-500'}`}
+          style={{ width: `${progressPct}%` }}
+          />
+          </div>
+          <div className="flex justify-between items-center">
+          <div className="flex gap-1">
+          {[1,2,3].map(l => (
+            <div key={l} className={`w-4 h-1 rounded-full ${l <= level ? 'bg-blue-500' : 'bg-slate-700'}`} />
+          ))}
+          </div>
+          <span className="text-[8px] font-black uppercase text-slate-600">
+          {level >= 3
+            ? '⭐ MAX'
+            : nextTitle
+            ? `${xpToNext} XP → ${nextTitle}`
+            : ''}
+            </span>
+            </div>
+            </div>
+            </div>
+        );
+      })}
+      </div>
+      </div>
+    )}
+
+
+
     </div>
-
-
 
 
     {/* BOTTOM TAB BAR */}
@@ -3578,7 +3668,7 @@ export default function App() {
       </button>
       </div>
     )}
-    )}
+
     <style>{`@keyframes move { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
     </div>
   );
