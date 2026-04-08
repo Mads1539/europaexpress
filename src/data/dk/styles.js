@@ -2,11 +2,16 @@ export const CATEGORY_STYLE = {
   // --- BUS ---
   "flix": { label: "FLX", bg: "bg-lime-500", text: "text-white", showNumber: true },
   "bat_bornholm": { label: "BAT", bg: "bg-red-600", text: "text-white", showNumber: true },
+  "movia": { label: "Movia", bg: "bg-yellow-400", text: "text-black", showNumber: true },
+  "movia_s": { label: "Movia S", bg: "bg-blue-800", text: "text-white", showNumber: true },
+  "movia_r": { label: "Movia R", bg: "bg-blue-800", text: "text-white", showNumber: true },
+  "movia_x": { label: "Movia X", bg: "bg-blue-900", text: "text-white", showNumber: true },
+  "midtrafik": { label: "Midttrafik", bg: "bg-cyan-500", text: "text-white", showNumber: true },
 
   // --- DSB ---
   "DSB_Regional": { label: "RE", bg: "bg-rose-700", text: "text-white", showNumber: true },
   "DSB_Intercity": { label: "IC", bg: "bg-rose-700", text: "text-white", showNumber: true },
-  "DSB_Intercity Lyn": { label: "ICL", bg: "bg-rose-700", text: "text-white", showNumber: true },
+  "DSB_Intercity Lyn": { label: "ICL", bg: "bg-amber-400", text: "text-white", showNumber: true },
   "DSB_øresundstoget": { label: "ET", bg: "bg-slate-300", text: "text-purple-600", showNumber: true },
 
   // --- FERRIES ---
