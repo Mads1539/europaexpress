@@ -36,7 +36,7 @@ export const CITIES = {
     "Dronningmølle": { pos: [56.09766, 12.38751], country: "DK", parent: null, size: "small", hub: false, station: "Dronningmølle Station", bus: "Dronningmølle St.", ferry: null, airport: null, category: "DK_Nordsjælland" },
     "Duemose": { pos: [56.00963, 12.26288], country: "DK", parent: null, size: "small", hub: false, station: "Duemose trinbræt", bus: null, ferry: null, airport: null, category: "DK_Nordsjælland" },
     "Dueodde": { pos: [54.9947, 15.0753], country: "DK", parent: null, size: "small", hub: false, station: null, bus: "Dueodde (Fyrvejen)", ferry: null, airport: null, category: "DK_Bornholm" },
-        "Dybbølsbro": { pos: [55.66511, 12.55962], country: "DK", parent: "København", size: "medium", hub: false, station: "Dybbølsbro Station", bus: "Dybbølsbro Station", ferry: null, airport: null, category: "DK_Copenhagen" },
+        "Dybbølsbro": {  pos: [55.66489, 12.55995], country: "DK", parent: "København", size: "medium", hub: false, station: "Dybbølsbro Station", bus: "Dybbølsbro Station", ferry: null, airport: null, category: "DK_Copenhagen" },
         "Dyssegård": { pos: [55.73238, 12.536], country: "DK", parent: "Gentofte", size: "small", hub: false, station: "Dyssegård Station", bus: "Dyssegård St.", ferry: null, airport: null, category: "DK_Nordsjælland" },
         "Dyssekilde": { pos: [55.98536, 11.94268], country: "DK", parent: "Torup", size: "small", hub: false, station: "Dyssekilde Station", bus: "Torup v/ Stationen", ferry: null, airport: null, category: "DK_Nordsjælland" },
         "Egedal": { pos: [55.77981, 12.18549], country: "DK", parent: "Ølstykke", size: "small", hub: false, station: "Egedal Station", bus: "Egedal St.", ferry: null, airport: null, category: "DK_Copenhagen" },

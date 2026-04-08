@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
   getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion
@@ -89,8 +89,10 @@ const INCIDENT_TYPES = [
 ];
 
 // De avatars det er muligt at vælge
-const AVATARS = ["👨🏼‍💼", "👩🏼‍💼", "👨🏼‍✈️", "👩🏼‍✈️", "👨🏼‍🚀", "👩🏼‍🚀"];
-
+const AVATARS = [
+  "👨‍💼", "👩‍💼", "👨‍✈️", "👩‍✈️", "👨‍🚀", "👩‍🚀",
+"👨‍⚕️", "👩‍⚕️", "🐸", "🐻", "🐢", "🦮"
+];
 // Hvor mange minutter man holder stille i en by
 const STOP_DURATION = 1;
 
@@ -131,6 +133,141 @@ const fetchOSRMRoute = async (startPos, endPos, mode = 'driving') => {
   } catch (err) {
     return null;
   }
+};
+
+// =========================================================================
+// DYNAMISK ROUTING - Erstatter hårdkodede path-arrays
+// =========================================================================
+
+// Fly: Matematisk storcirkel-bue med 40 punkter
+const calcFlightArc = (p1, p2) => {
+  const steps = 40;
+  return Array.from({ length: steps }, (_, i) => {
+    const t = i / (steps - 1);
+    const lat = p1[0] + (p2[0] - p1[0]) * t;
+    const lng = p1[1] + (p2[1] - p1[1]) * t;
+    // Sinuskurve der løfter buen opad på midten (jo længere, jo højere bue)
+    const dist = Math.sqrt(Math.pow(p2[0]-p1[0], 2) + Math.pow(p2[1]-p1[1], 2));
+    const arcHeight = Math.sin(t * Math.PI) * (dist * 0.15);
+    return [lat + arcHeight, lng];
+  });
+};
+
+// Tog: BRouter følger faktiske jernbaneskinner
+const fetchBRouterRoute = async (startPos, endPos) => {
+  const url = `https://brouter.de/brouter?lonlats=${startPos[1]},${startPos[0]}|${endPos[1]},${endPos[0]}&profile=rail&alternativeidx=0&format=geojson`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const coords = data?.features?.[0]?.geometry?.coordinates;
+    if (!coords || coords.length === 0) return null;
+
+    let path = coords.map(c => [c[1], c[0]]);
+
+    const BUFFER_KM = 0.05; // 300 meter buffer omkring stationer
+
+    // Trim starten: find første punkt der er > 300m fra startPos
+    let startIdx = 0;
+    for (let i = 0; i < path.length; i++) {
+      if (calculateDistance(path[i], startPos) > BUFFER_KM) {
+        startIdx = i;
+        break;
+      }
+    }
+
+    // Trim slutningen: find sidste punkt der er > 300m fra endPos
+    let endIdx = path.length - 1;
+    for (let i = path.length - 1; i >= 0; i--) {
+      if (calculateDistance(path[i], endPos) > BUFFER_KM) {
+        endIdx = i;
+        break;
+      }
+    }
+
+    // Byg den endelige sti:
+    // startPos → første BRouter-punkt uden for buffer → ... → sidste punkt uden for buffer → endPos
+    path = [startPos, ...path.slice(startIdx, endIdx + 1), endPos];
+
+    const distKm = (data.features[0].properties?.['track-length'] || 0) / 1000;
+    return { path, distance: distKm };
+  } catch {
+    return null;
+  }
+};
+
+// OSRM: Gå (foot) eller Bil (taxi/bus)
+const fetchOSRMDriving = async (startPos, endPos, profile = 'driving') => {
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${startPos[1]},${startPos[0]};${endPos[1]},${endPos[0]}?overview=full&geometries=geojson`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.code !== 'Ok') return null;
+    // GeoJSON returnerer [lng, lat] — vi vender om til [lat, lng]
+    const path = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    const distKm = data.routes[0].distance / 1000;
+    return { path, distance: distKm };
+  } catch {
+    return null;
+  }
+};
+
+// PROXY: Slår op i Firebase-cache, henter fra API hvis ikke fundet
+const fetchAndCacheRoute = async (fromCity, toCity, travelType, pos1, pos2) => {
+  const key = `${travelType}_${[fromCity, toCity].sort().join('_')}`;
+  const cacheRef = doc(db, 'artifacts', appId, 'public', 'data', 'routes', key);
+
+  // 1. Tjek cache
+  try {
+    const cached = await getDoc(cacheRef);
+    if (cached.exists()) {
+      const path = cached.data().path.map(p => [p.lat, p.lng]);
+
+      // Tjek om ruten skal vendes — sammenlign første punkt med startpos
+      const firstPoint = path[0];
+      const distToStart = Math.abs(firstPoint[0] - pos1[0]) + Math.abs(firstPoint[1] - pos1[1]);
+      const distToEnd = Math.abs(firstPoint[0] - pos2[0]) + Math.abs(firstPoint[1] - pos2[1]);
+
+      // Hvis første punkt er tættere på destination end på start → vend ruten om
+      return distToEnd < distToStart ? [...path].reverse() : path;
+    }
+  } catch { }
+
+  // 2. Hent fra API
+  let path;
+
+  if (travelType === 'flight') {
+    path = calcFlightArc(pos1, pos2);
+  } else if (travelType === 'train') {
+    console.log(`🚂 Henter BRouter rute: ${fromCity} → ${toCity}`);
+    const result = await fetchBRouterRoute(pos1, pos2);
+    console.log(`🚂 BRouter svar:`, result);
+    path = result?.path || (await fetchOSRMDriving(pos1, pos2, 'driving'))?.path || [pos1, pos2];
+    if (!result?.path) console.warn(`⚠️ BRouter fejlede for ${fromCity}→${toCity}, bruger OSRM fallback`);
+  } else if (travelType === 'walking') {
+    const result = await fetchOSRMDriving(pos1, pos2, 'foot');
+    path = result?.path || [pos1, pos2];
+  } else {
+    const result = await fetchOSRMDriving(pos1, pos2, 'driving');
+    path = result?.path || [pos1, pos2];
+  }
+
+  // 3. Gem i Firebase som {lat, lng} objekter (nested arrays er ikke tilladt)
+  const pathForFirebase = path.map(p => ({ lat: p[0], lng: p[1] }));
+  setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() }).catch(() => {});
+
+  // 4. Returner som [lat, lng] arrays til resten af koden
+  return path;
+};
+
+// Ankomst-radius i km per transporttype
+const ARRIVAL_RADIUS_KM = {
+  train: 1.5,
+  bus: 0.4,
+  walking: 0.15,
+  taxi: 0.3,
+  flight: 4.0,
+  ferry: 1.0,
 };
 
 
@@ -379,7 +516,13 @@ export default function App() {
   // =========================================================================
 
 
+  const [showSplash, setShowSplash] = useState(true);
 
+  useEffect(() => {
+    // Vis logoet i 3 sekunder før menuen fades ind
+    const timer = setTimeout(() => setShowSplash(false), 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
 
   const [playerId] = useState(() => {
@@ -589,7 +732,14 @@ export default function App() {
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
-      script.onload = () => setLeafletReady(true);
+      script.onload = () => {
+        // Load PolylineOffset plugin efter Leaflet er klar
+        const offsetScript = document.createElement('script');
+        offsetScript.src = 'https://cdn.jsdelivr.net/npm/leaflet-polylineoffset@1.1.1/leaflet.polylineoffset.js';
+        offsetScript.async = true;
+        offsetScript.onload = () => setLeafletReady(true);
+        document.head.appendChild(offsetScript);
+      };
       document.head.appendChild(script);
     } else {
       setLeafletReady(true);
@@ -700,19 +850,6 @@ export default function App() {
 
       TRANSIT_LINES.forEach(line => {
         if (line.type === 'bus' || line.type === 'flight') return;
-
-        const points = line.path || line.cities.filter(c => CITIES[c]).map(c => CITIES[c].pos);
-        if (points.length < 2) return;
-
-        // Tegn selve ruten
-        const routeKey = [...line.cities].sort().join('-');
-        segmentUsage[routeKey] = (segmentUsage[routeKey] || 0) + 1;
-        L.polyline(points, {
-          color: line.color,
-          weight: 5,
-          opacity: 0.6,
-          lineJoin: 'round'
-        }).addTo(mapInstance.current);
 
         // Registrer byer og tegn små stationer
         line.cities.forEach((cityName, index) => {
@@ -914,7 +1051,9 @@ export default function App() {
           // --- NY LOGIK: Håndtering af pathData (JSON-streng) eller path (Array) ---
           if (currentSeg.pathData) {
             try {
-              finalPath = JSON.parse(currentSeg.pathData);
+              const raw = JSON.parse(currentSeg.pathData);
+              // Håndter både gammelt format [[lat,lng]] og nyt format [{lat, lng}]
+              finalPath = raw.map(p => Array.isArray(p) ? p : [p.lat, p.lng]);
             } catch (e) {
               console.error("Kunne ikke parse pathData", e);
             }
@@ -996,7 +1135,6 @@ export default function App() {
     }
     });
   }, [interpolatedTime, gameState?.players]);
-
 
   // --- D. DYNAMISK AUTO-ZOOM ---
   useEffect(() => { autoZoomRef.current = autoZoom; }, [autoZoom]);
@@ -1204,7 +1342,7 @@ export default function App() {
           avatar: playerAvatar,
           color: playerColor,
           currentCity: "København",
-          money: 100,
+          money: 99999,
           isTraveling: false,
           history: [],
         };
@@ -1283,43 +1421,19 @@ export default function App() {
     const segments = [];
     let startTime = dep.time;
 
-    // 1. FIND DEN RIGTIGE LINJE (Selvom mange hedder "RE")
-    // Vi prioriterer: 1. Navn + Byer, 2. Kun Navn, 3. Fallback objekt
-    const lineData = TRANSIT_LINES.find(l =>
-    l.name === dep.lineName &&
-    l.cities?.includes(dep.route[0]) &&
-    l.cities?.includes(dep.route[dep.route.length - 1])
-    ) || TRANSIT_LINES.find(l => l.name === dep.lineName) || {
-      id: dep.lineName || "RE",
-      path: [],
-      color: '#64748b'
-    };
-
-    // 2. BEREGN SEGMENTER
+    // Byg segmenter og hent ruter dynamisk for hvert stop-par
     for (let i = 0; i < dep.route.length - 1; i++) {
       const fromCity = dep.route[i];
       const toCity = dep.route[i + 1];
       const pos1 = CITIES[fromCity]?.pos;
       const pos2 = CITIES[toCity]?.pos;
-
       if (!pos1 || !pos2) continue;
 
-      let segmentPath = [pos1, pos2];
-
-      // Find path i den valgte linje (med tolerance for koordinater)
-      if (lineData.path && lineData.path.length > 0) {
-        const idx1 = lineData.path.findIndex(p => p && Math.abs(p[0] - pos1[0]) < 0.001 && Math.abs(p[1] - pos1[1]) < 0.001);
-        const idx2 = lineData.path.findIndex(p => p && Math.abs(p[0] - pos2[0]) < 0.001 && Math.abs(p[1] - pos2[1]) < 0.001);
-
-        if (idx1 !== -1 && idx2 !== -1) {
-          segmentPath = idx1 < idx2
-          ? lineData.path.slice(idx1, idx2 + 1)
-          : lineData.path.slice(idx2, idx1 + 1).reverse();
-        }
-      }
+      // Hent ruten (fra cache eller API)
+      const path = await fetchAndCacheRoute(fromCity, toCity, dep.type, pos1, pos2);
 
       const dist = getDist(pos1, pos2);
-      const config = TRAVEL_TYPES[dep.type] || TRAVEL_TYPES.train || { speed: 80 };
+      const config = TRAVEL_TYPES[dep.type] || TRAVEL_TYPES.train;
       const duration = (dist / config.speed) * 60;
 
       segments.push({
@@ -1327,15 +1441,14 @@ export default function App() {
         to: toCity,
         departure: Number(startTime),
                     arrival: Number(startTime + duration),
-                    pathData: JSON.stringify(segmentPath),
-                    // Vi sikrer os at lineId er en streng og aldrig undefined
-                    lineId: String(lineData.id || lineData.name || dep.lineName || "RE")
+                    pathData: JSON.stringify(path.map(p => ({ lat: p[0], lng: p[1] }))),
+                    lineId: String(dep.lineName || dep.type || 'transit'),
+                    arrivalRadiusKm: ARRIVAL_RADIUS_KM[dep.type] || 1.0,
       });
 
       startTime += duration + STOP_DURATION;
     }
 
-    // 3. OPDATER FIREBASE (Atomic Update)
     try {
       const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
 
@@ -1343,7 +1456,7 @@ export default function App() {
         type: dep.type || 'train',
         from: me.currentCity,
         to: dep.destination,
-        line: dep.lineName || 'RE',
+        line: dep.lineName || dep.type,
         time: Number(gameState.gameTime)
       };
 
@@ -1352,7 +1465,7 @@ export default function App() {
         ...p,
         isTraveling: true,
         destinationCity: dep.destination,
-        segments: segments,
+        segments,
         money: Number(p.money - dep.cost),
                                                    lastTicketPrice: Number(dep.cost),
                                                    travelType: dep.type,
@@ -1366,6 +1479,7 @@ export default function App() {
       console.error("KRITISK FEJL i travel:", error);
     }
   };
+
   const handleStepOffNextStation = async () => {
     if (!currentPlayer || !currentPlayer.segments) return;
     // Find det nuværende eller næste segment
@@ -1385,6 +1499,172 @@ export default function App() {
       } : p)
     });
   };
+
+  // Beregner hvilke segmenter der deles af flere linjer og tildeler offset
+  const calcLineOffsets = (cityName) => {
+    const segmentLines = {}; // segmentKey → [linje1, linje2, ...]
+
+    TRANSIT_LINES.filter(l => l.type !== 'flight' && l.cities.includes(cityName))
+    .forEach(line => {
+      const cityIndex = line.cities.indexOf(cityName);
+      const allCities = line.cities;
+
+      // Alle segmenter på hele linjen (ikke kun fra byen)
+      for (let i = 0; i < allCities.length - 1; i++) {
+        const key = [allCities[i], allCities[i+1]].sort().join('__');
+        if (!segmentLines[key]) segmentLines[key] = [];
+        if (!segmentLines[key].find(l => l.name === line.name)) {
+          segmentLines[key].push(line);
+        }
+      }
+    });
+
+    // For hvert segment: fordel offset symmetrisk
+    // 1 linje → offset 0, 2 linjer → -4 og +4, 3 linjer → -4, 0, +4 osv.
+    const OFFSET_STEP = 4; // pixels mellem linjer
+    const segmentOffsets = {}; // `${segmentKey}__${lineName}` → offset i pixels
+
+    Object.entries(segmentLines).forEach(([segKey, lines]) => {
+      const count = lines.length;
+      const start = -((count - 1) / 2) * OFFSET_STEP;
+      lines.forEach((line, i) => {
+        segmentOffsets[`${segKey}__${line.name}`] = start + i * OFFSET_STEP;
+      });
+    });
+
+    return segmentOffsets;
+  };
+
+  const drawnRouteLayers = useRef([]);
+
+  const drawRoutesFromCity = async (cityName) => {
+    if (!mapInstance.current || !window.L) return;
+    const L = window.L;
+    if (!cityName) return;
+
+    const relevantLines = TRANSIT_LINES.filter(line =>
+    line.type !== 'flight' && line.cities.includes(cityName)
+    );
+
+    const segmentOffsets = calcLineOffsets(cityName);
+
+    const drawnSegments = new Set();
+
+    // Saml alle segmenter på tværs af linjer
+    const allSegments = [];
+    for (const line of relevantLines) {
+      const cityIndex = line.cities.indexOf(cityName);
+      const segmentsToShow = [];
+      for (let i = cityIndex; i < line.cities.length - 1; i++)
+        segmentsToShow.push([line.cities[i], line.cities[i + 1], line]);
+      for (let i = cityIndex; i > 0; i--)
+        segmentsToShow.push([line.cities[i], line.cities[i - 1], line]);
+
+      for (const seg of segmentsToShow) {
+        const segKey = [seg[0], seg[1]].sort().join('_');
+        if (drawnSegments.has(segKey)) continue;
+        drawnSegments.add(segKey);
+        allSegments.push([seg[0], seg[1], seg[2]]);
+      }
+    }
+
+    // Hent alle ruter parallelt
+    const resolvedSegments = await Promise.all(allSegments.map(async ([fromCity, toCity, line]) => {
+      const pos1 = CITIES[fromCity]?.pos;
+      const pos2 = CITIES[toCity]?.pos;
+      if (!pos1 || !pos2) return null;
+
+      let points = [pos1, pos2];
+      try {
+        const key = `${line.type}_${[fromCity, toCity].sort().join('_')}`;
+        const cacheRef = doc(db, 'artifacts', appId, 'public', 'data', 'routes', key);
+        const cached = await getDoc(cacheRef);
+        if (cached.exists()) {
+          const path = cached.data().path.map(p => [p.lat, p.lng]);
+          const firstPoint = path[0];
+          const distToStart = Math.abs(firstPoint[0] - pos1[0]) + Math.abs(firstPoint[1] - pos1[1]);
+          const distToEnd = Math.abs(firstPoint[0] - pos2[0]) + Math.abs(firstPoint[1] - pos2[1]);
+          points = distToEnd < distToStart ? [...path].reverse() : path;
+        } else if (line.type === 'train') {
+          const result = await fetchBRouterRoute(pos1, pos2);
+          if (result?.path) {
+            points = result.path;
+            const pathForFirebase = points.map(p => ({ lat: p[0], lng: p[1] }));
+            setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() }).catch(() => {});
+          }
+        } else if (line.type === 'ferry') {
+          const result = await fetchOSRMDriving(pos1, pos2, 'driving');
+          if (result?.path) points = result.path;
+        }
+      } catch { }
+
+      return { points, line, fromCity, toCity };
+    }));
+
+    // Tegn alle på én gang og tilføj animation
+    resolvedSegments.filter(Boolean).forEach(({ points, line, fromCity, toCity }) => {
+      const segKey = [fromCity, toCity].sort().join('__');
+      const offsetKey = `${segKey}__${line.name}`;
+      const offset = segmentOffsets[offsetKey] ?? 0;
+
+      const bgLayer = L.polyline(points, {
+        color: line.color,
+        weight: 5,
+        opacity: 0.2,
+        lineJoin: 'round',
+        offset,
+      }).addTo(mapInstance.current);
+
+      const animLayer = L.polyline(points, {
+        color: line.color,
+        weight: 3,
+        opacity: 0.9,
+        lineJoin: 'round',
+        offset,
+      }).addTo(mapInstance.current);
+
+      const pathEl = animLayer.getElement();
+      if (pathEl) {
+        const length = pathEl.getTotalLength?.() ?? 2000;
+        pathEl.style.strokeDasharray = length;
+        pathEl.style.strokeDashoffset = length;
+        pathEl.style.transition = 'stroke-dashoffset 1.2s ease-out';
+        setTimeout(() => { pathEl.style.strokeDashoffset = '0'; }, 50);
+      }
+
+      drawnRouteLayers.current.push(bgLayer, animLayer);
+    });
+  };
+
+
+
+  const drawnForCities = useRef('');
+
+  useEffect(() => {
+    if (!leafletReady) return;
+    if (gameState?.status !== 'playing') return;
+
+    const activeCities = [...new Set(
+      (gameState?.players ?? [])
+      .filter(p => !p.isTraveling && p.currentCity)
+      .map(p => p.currentCity)
+    )].sort();
+
+    // Kun tegn hvis byerne faktisk har ændret sig
+    const citiesKey = activeCities.join(',');
+    if (citiesKey === drawnForCities.current) return;
+    drawnForCities.current = citiesKey;
+
+    // Ryd gamle lag og tegn fra alle aktive byer
+    drawnRouteLayers.current.forEach(layer => mapInstance.current?.removeLayer(layer));
+    drawnRouteLayers.current = [];
+    activeCities.forEach((city, index) => drawRoutesFromCity(city, false));
+
+  }, [
+    leafletReady,
+    gameState?.status,
+    gameState?.players?.map(p => `${p.id}:${p.currentCity}:${p.isTraveling}`).join(',')
+  ]);
 
 
   const handleTakeJob = async (job, choice = null) => {
@@ -1627,159 +1907,228 @@ export default function App() {
     );
   }
 
-  // --- C. HOVEDMENU (Start skærm) ---
+  // --- C. HOVEDMENU (Opdateret med logo-fokus og versionsnummer) ---
 
   if (view === 'menu' && !gameState) {
+    // SPLASH SCREEN (Studio Credit)
+    if (showSplash) {
+      return (
+        <div className="h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
+        <div className="absolute w-64 h-64 bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
+
+        <div className="relative flex flex-col items-center animate-in fade-in zoom-in duration-1000">
+        <img
+        src="/mmc.png"
+        alt="Studio Logo"
+        className="w-32 h-32 object-contain mb-6 opacity-90"
+        />
+        <div className="space-y-1 text-center">
+        <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase opacity-70"></p>
+        <h2 className="text-white font-light tracking-[0.15em] text-lg uppercase"></h2>
+        </div>
+        </div>
+
+        <div className="absolute bottom-20 w-32 h-[1px] bg-slate-900 overflow-hidden">
+        <div className="h-full bg-blue-500/50 animate-[loading_3s_ease-in-out]" />
+        </div>
+        </div>
+      );
+    }
+
+    // SELVE HOVEDMENU
     return (
-      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 space-y-12 overflow-hidden relative">
-      <div className="absolute inset-0 opacity-20 pointer-events-none"><div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[160px]" /><div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-red-500 rounded-full blur-[160px]" /></div>
-      <div className="text-center space-y-4 relative"><Globe size={100} className="text-blue-500 mx-auto animate-pulse" /><h1 className="text-6xl md:text-9xl font-black italic tracking-tighter">EUROPA <span className="text-blue-500">EXPRESS</span></h1><p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-xs">The Pan-European Transit Simulator</p></div>
-      <div className="w-full max-w-sm space-y-4 relative"><button onClick={() => setView('join')} className="w-full bg-white text-slate-950 py-6 rounded-2xl font-black uppercase hover:bg-blue-400 transition-all text-xl shadow-[0_0_40px_rgba(255,255,255,0.2)]">Start Rejsen</button><button onClick={startHost} className="w-full border border-white/10 py-4 rounded-xl font-bold text-[10px] uppercase opacity-40 hover:opacity-100 transition-opacity">Host Simulation</button></div>
+      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 overflow-hidden relative">
+      {/* Dynamisk Baggrundslys */}
+      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-blue-600/5 blur-[150px]" />
+      </div>
+
+      {/* Versionsnummer i hjørnet */}
+      <div className="absolute bottom-6 right-8 opacity-30 select-none">
+      <p className="text-[10px] font-mono tracking-widest uppercase">Build v0.2.0 alpha</p>
+      </div>
+
+      <div className="flex flex-col items-center max-w-lg w-full relative z-10">
+
+      {/* --- DIT LOGO HER --- */}
+      <div className="w-full mb-12 animate-in fade-in slide-in-from-top-4 duration-1000">
+      <img
+      src="/Personligt Logo-08.png" // Skift evt. til dit Europa Express logo her
+      className="w-full max-w-[400px] mx-auto drop-shadow-[0_0_35px_rgba(59,130,246,0.3)]"
+      alt="Main Logo"
+      />
+      <p className="text-center text-slate-500 font-bold uppercase tracking-[0.5em] text-[10px] mt-6">
+      subtekst
+      </p>
+      </div>
+
+      {/* Menu Knapper */}
+      <div className="w-full max-w-sm space-y-4 animate-in fade-in slide-in-from-bottom-8 delay-300 duration-700">
+      <button
+      onClick={() => setView('join')}
+      className="group relative w-full bg-blue-600 hover:bg-blue-500 text-white py-6 rounded-2xl font-black uppercase transition-all active:scale-95 shadow-[0_15px_40px_rgba(59,130,246,0.25)] overflow-hidden"
+      >
+      <span className="relative z-10 flex items-center justify-center gap-2">
+      <Play size={20} fill="currentColor" />
+      Start Rejsen
+      </span>
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]" />
+      </button>
+
+      <button
+      onClick={startHost}
+      className="w-full bg-slate-900/40 border border-white/5 py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-slate-800 hover:border-white/10 transition-all"
+      >
+      Host Simulation
+      </button>
+      </div>
+      </div>
       </div>
     );
   }
 
 
-  // --- D. PAS-KONTROL (Join skærm) ---
+  // --- D. PAS-KONTROL (Join skærm - Med udvidet avatar-vælger) ---
   if (view === 'join' && !gameState) {
     return (
-      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4 overflow-y-auto">
-      {/* INLINE CSS TIL FOIL, TEKSTUR OG SIKKERHEDSMØNSTER */}
+      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-start p-6 overflow-y-auto no-scrollbar relative font-sans">
+
+      {/* Dynamisk baggrundsglød */}
+      <div
+      className="fixed inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
+      style={{
+        background: `radial-gradient(circle at 50% 30%, ${playerColor} 0%, transparent 70%)`,
+            filter: 'blur(60px)'
+      }}
+      />
+
       <style>{`
-        @keyframes foil-shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
+        @keyframes scan-line {
+          0% { transform: translateY(-100%); opacity: 0; }
+          50% { opacity: 1; }
+          100% { transform: translateY(400%); opacity: 0; }
         }
         .foil-gold {
           background: linear-gradient(135deg, #b8860b 0%, #e1b333 25%, #fdf5e6 50%, #e1b333 75%, #b8860b 100%);
           background-size: 400% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          background-clip: text;
-          animation: foil-shimmer 6s ease-in-out infinite;
-          display: inline-block;
         }
         .passport-cover {
-          /* Læder-tekstur der blander sig med baggrundsfarven */
           background-image: url("https://www.transparenttextures.com/patterns/leather.png");
           background-blend-mode: multiply;
-        }
-        .passport-pattern {
-          background-image: url("data:image/svg+xml,%3Csvg width='100' height='20' viewBox='0 0 100 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M21.184 20c.34-2.392 1.191-4.708 2.484-6.818C26.371 9.149 31.642 6 38 6c6.358 0 11.629 3.149 14.332 7.182 1.293 2.11 2.144 4.426 2.484 6.818h7.228a23.951 23.951 0 0 0-2.435-7.732C56.779 7.552 50.832 4 44 4c-6.832 0-12.779 3.552-15.609 8.268a23.951 23.951 0 0 0-2.435 7.732h7.228zm0-20c.34 2.392 1.191 4.708 2.484 6.818C26.371 10.851 31.642 14 38 14c6.358 0 11.629-3.149 14.332-7.182 1.293-2.11 2.144-4.426 2.484-6.818h7.228a23.951 23.951 0 0 1-2.435 7.732C56.779 12.448 50.832 16 44 16c-6.832 0-12.779-3.552-15.609-8.268a23.951 23.951 0 0 1-2.435-7.732h7.228z' fill='%239C92AC' fill-opacity='0.08' fill-rule='evenodd'/%3E%3C/svg%3E");
+          box-shadow: inset 0 0 80px rgba(0,0,0,0.5), 0 40px 80px rgba(0,0,0,0.8);
         }
         `}</style>
 
-        <div className="w-full max-w-md animate-in fade-in zoom-in duration-500">
+        <div className="w-full max-w-md z-10 animate-in fade-in zoom-in duration-700 mt-4 mb-12">
 
-        {/* PASSET / OMSLAGET - Farven styres nu dynamisk af playerColor */}
+        {/* PASSET */}
         <div
-        className="passport-cover rounded-[40px] p-2 shadow-[0_30px_60px_rgba(0,0,0,0.6)] relative border-4 mb-8 transition-colors duration-500"
-        style={{
-          backgroundColor: playerColor,
-          borderColor: 'rgba(0,0,0,0.2)' // Gør kanten mørkere end selve læderet
-        }}
+        className="passport-cover rounded-t-[40px] p-2 border-t border-x border-white/20 relative transition-colors duration-700"
+        style={{ backgroundColor: playerColor }}
         >
-
-        {/* INDERSIDEN AF PASSET */}
-        <div className="bg-[#f3e5ab] passport-pattern rounded-[36px] p-6 text-slate-900 shadow-inner overflow-hidden relative border-b-4 border-black/10">
-
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] pointer-events-none">
-        <Globe size={300} />
-        </div>
+        <div className="bg-[#f4f1e1] rounded-t-[36px] p-6 text-slate-900 shadow-inner overflow-hidden relative">
 
         {/* Header */}
-        <div className="flex justify-between items-start mb-8 relative z-10">
+        <div className="flex justify-between items-start mb-6 relative z-10">
         <div className="space-y-0.5">
         <h2 className="text-3xl font-black uppercase tracking-tighter italic leading-none foil-gold">Passport</h2>
-        <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">European Transit Union</p>
-        </div>
-        <div
-        className="px-3 py-1 rounded font-mono text-[10px] font-black border-2 transition-colors duration-500 foil-gold"
-        style={{ borderColor: `${playerColor}44` }}
-        >
-        ID-{Math.random().toString(36).substring(7).toUpperCase()}
+        <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">European Transit Union</p>
         </div>
         </div>
 
         <div className="flex gap-6 relative z-10">
-        {/* Profilbillede / Biometrisk sektion */}
-        <div className="space-y-2">
+        {/* Profilbillede med "Scanning" effekt */}
+        <div className="space-y-3">
         <div
-        className="w-28 h-36 border-2 border-slate-300 rounded-md flex flex-col items-center justify-center relative overflow-hidden bg-white/50 backdrop-blur-sm transition-all duration-700"
-        style={{ boxShadow: `inset 0 0 20px ${playerColor}22` }}
+        className="w-28 h-36 border-2 border-slate-300 rounded-lg relative overflow-hidden bg-white/80 shadow-md transition-all duration-700"
+        style={{ boxShadow: `inset 0 0 20px ${playerColor}33` }}
         >
-        <div className="text-5xl mb-2 filter drop-shadow-md">{playerAvatar}</div>
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-400/10 to-transparent h-4 w-full animate-pulse top-1/4" />
-        <div className="absolute bottom-0 w-full bg-slate-800 py-1 text-[7px] font-black uppercase text-center text-white tracking-widest">
+        {/* Centreret Avatar - Forstørret og rykket en smule ned for at ligne et brystbillede/pasfoto */}
+        <div className="absolute inset-0 flex items-center justify-center text-8xl select-none leading-none transform translate-y-2 drop-shadow-sm">
+        {playerAvatar}
+        </div>
+
+        {/* Den blå scan-linje - Ligger over avataren */}
+        <div className="absolute inset-x-0 h-1 bg-blue-500/40 shadow-[0_0_12px_rgba(59,130,246,0.8)] z-20 animate-[scan-line_3s_linear_infinite]" />
+
+        {/* Subtil tekstur-overlay for at få det til at ligne print på papir */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none passport-pattern" />
+
+        <div className="absolute bottom-0 w-full bg-slate-800/90 py-1.5 text-[7px] font-black uppercase text-center text-white tracking-widest z-30">
         Digital Bio-ID
-        </div>
-        </div>
-        <div className="flex justify-center">
-        <div className="w-12 h-12 border-2 rounded-full flex items-center justify-center rotate-[-15deg] opacity-60" style={{ borderColor: playerColor }}>
-        <span className="text-[8px] font-black uppercase leading-none text-center foil-gold">Approved<br/>2026</span>
         </div>
         </div>
         </div>
 
-        {/* Data-felter */}
-        <div className="flex-1 space-y-5">
-        <div className="relative border-b-2 border-slate-300 pb-1 group">
-        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest foil-gold">Surname / Name</label>
+        {/* Data */}
+        <div className="flex-1 space-y-4">
+        <div className="border-b border-slate-400/50 pb-1">
+        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">Name</label>
         <input
         placeholder="ENTER NAME"
-        className="w-full bg-transparent border-none p-0 text-base font-black uppercase focus:ring-0 placeholder:text-slate-300"
+        className="w-full bg-transparent border-none p-0 text-lg font-black uppercase focus:ring-0 placeholder:text-slate-300"
         value={playerName}
         onChange={e => setPlayerName(e.target.value)}
         />
         </div>
-
-        <div className="relative border-b-2 border-slate-300 pb-1">
-        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest foil-gold">Visa / Entry Code</label>
+        <div className="border-b border-slate-400/50 pb-1">
+        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">Visa Code</label>
         <input
         placeholder="CODE"
-        className="w-full bg-transparent border-none p-0 text-base font-mono font-black uppercase focus:ring-0 placeholder:text-slate-300 tracking-[0.4em]"
+        maxLength={4}
+        className="w-full bg-transparent border-none p-0 text-lg font-mono font-black uppercase focus:ring-0 placeholder:text-slate-300 tracking-[0.3em]"
         value={roomCode}
         onChange={e => setRoomCode(e.target.value.toUpperCase())}
         />
         </div>
-        <div className="pt-2">
-        <p className="text-[7px] font-mono text-slate-400 leading-tight uppercase">
-        Authority: Central Transit Hub<br/>
-        Issue Date: 21.03.2026<br/>
-        Expiry: Non-Expiring
-        </p>
         </div>
+        </div>
+
+        {/* MRZ Zone */}
+        <div className="mt-6 pt-4 border-t border-slate-300/50 font-mono text-[8px] text-slate-400 leading-none opacity-60">
+        P&lt;DNK{playerName.replace(/\s/g, '&lt;').padEnd(12, '&lt;').toUpperCase()}&lt;&lt;&lt;&lt;&lt;<br/>
+        {roomCode.padEnd(4, '0')}1234567DNK8501015M2612317
         </div>
         </div>
         </div>
 
-        {/* FARVE & PERSONA VÆLGER */}
-        <div className="p-5 bg-black/20 rounded-b-[36px] space-y-6">
+        {/* VALGMENU (Med plads til 2 rækker avatars) */}
+        <div className="bg-slate-900/90 backdrop-blur-xl p-6 rounded-b-[40px] border-x border-b border-white/10 space-y-6 shadow-2xl">
+
+        {/* Farvevælger */}
         <div>
-        <div className="flex justify-center gap-2.5">
-        {['#991b1b', '#1e3a8a', '#065f46', '#92400e', '#5b21b6', '#86198f', '#334155'].map(color => (
+        <div className="flex justify-center gap-2">
+        {['#7f1d1d', '#1e3a8a', '#064e3b', '#78350f', '#4c1d95', '#1e293b', '#475569'].map(color => (
           <button
           key={color}
           onClick={() => setPlayerColor(color)}
-          className={`w-7 h-7 rounded-full border-2 transition-all duration-300 ${playerColor === color ? 'border-white scale-125 shadow-lg' : 'border-transparent opacity-40 hover:opacity-100'}`}
+          className={`w-7 h-7 rounded-full border-2 transition-all ${playerColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-40'}`}
           style={{ backgroundColor: color }}
           />
         ))}
         </div>
         </div>
 
+        {/* Avatarvælger - Nu med 2 rækker (grid-cols-6) */}
+        <div className="space-y-2">
+        <span className="block text-center text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Select Persona</span>
         <div className="grid grid-cols-6 gap-2">
         {AVATARS.map(av => (
           <button
           key={av}
           onClick={() => setPlayerAvatar(av)}
-          className={`aspect-square flex items-center justify-center text-xl rounded-xl transition-all duration-300 ${playerAvatar === av ? 'bg-white shadow-lg scale-110 border-2' : 'bg-white/10 grayscale hover:bg-white/20'}`}
-          style={{ borderColor: playerAvatar === av ? playerColor : 'transparent' }}
+          className={`aspect-square flex items-center justify-center text-xl rounded-xl transition-all ${
+            playerAvatar === av
+            ? 'bg-white text-slate-950 scale-110 shadow-lg ring-2'
+            : 'bg-white/5 text-white/40 hover:bg-white/10'
+          }`}
+          style={{ ringColor: playerColor }}
           >
           {av}
           </button>
         ))}
-        </div>
         </div>
         </div>
 
@@ -1787,17 +2136,21 @@ export default function App() {
         <button
         disabled={!playerName || !roomCode}
         onClick={startJoin}
-        className="w-full text-white py-5 rounded-2xl font-black uppercase flex items-center justify-center gap-3 shadow-2xl transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
+        className="w-full relative group overflow-hidden py-4 rounded-2xl font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30"
         style={{ backgroundColor: playerColor }}
         >
-        Check-in & Boarding <Navigation size={20} className="fill-current" />
+        <div className="relative z-10 flex items-center justify-center gap-2">
+        Boarding <Navigation size={18} className="fill-current" />
+        </div>
         </button>
+        </div>
 
+        {/* Admin Link */}
         <button
         onClick={startHost}
-        className="w-full mt-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] hover:text-white transition-colors"
+        className="w-full mt-6 py-2 text-[8px] font-black text-slate-600 uppercase tracking-[0.4em] hover:text-blue-400 transition-colors"
         >
-        Opret ny session (Host)
+        — Admin Terminal —
         </button>
         </div>
         </div>
@@ -1805,16 +2158,158 @@ export default function App() {
   }
 
 
-  // --- D. Lobby ---
+  // --- D. Lobby (Opgraderet med spillernes egne farver) ---
 
   if (gameState?.status === 'lobby') {
     return (
-      <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8">
-      <div className="text-2xl font-black mb-2 opacity-40 uppercase">Visa Entry Code</div>
-      <div className="text-8xl font-black mb-12 text-blue-500 tracking-widest">{gameState.code}</div>
-      <div className="flex flex-wrap gap-6 mb-12 justify-center max-w-4xl">{gameState.players.map(p => (<div key={p.id} className="w-64 bg-white text-slate-950 flex flex-col rounded-xl overflow-hidden shadow-2xl relative animate-in fade-in zoom-in"><div className="bg-blue-600 p-2 flex justify-between items-center text-white"><Plane size={14} /><span className="text-[8px] font-black uppercase">Boarding Pass</span></div><div className="p-4 flex gap-4 items-center"><div className="text-4xl">{p.avatar}</div><div className="flex flex-col"><span className="text-[8px] font-black text-slate-400 uppercase">Passenger</span><span className="font-black italic uppercase leading-none">{p.name}</span></div></div><div className="border-t-2 border-dashed border-slate-200 p-3 flex justify-between bg-slate-50 font-mono"><div className="text-center"><div className="text-[8px] font-bold text-slate-400">GATE</div><div className="font-black">A24</div></div><div className="text-center"><div className="text-[8px] font-bold text-slate-400">SEAT</div><div className="font-black">12B</div></div><div className="text-center"><div className="text-[8px] font-bold text-slate-400">ZONE</div><div className="font-black">3</div></div></div></div>))}</div>
-      {role === 'host' && (<button onClick={initGame} className="bg-white text-slate-950 px-16 py-5 rounded-full font-black uppercase shadow-2xl hover:scale-105 transition-transform flex items-center gap-3"><CheckCircle2 /> Start Simulation</button>)}
-      </div>
+      <>
+      <style>{`
+        @keyframes scanline {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(100%); }
+        }
+        .bg-grid-slate {
+          background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        `}</style>
+
+        <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-start p-8 overflow-hidden relative font-sans">
+
+        {/* Baggrundseffekter */}
+        <div className="absolute inset-0 bg-grid-slate pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent pointer-events-none" />
+
+        {/* Top Header */}
+        <div className="w-full max-w-6xl flex justify-between items-center mb-12 relative z-10 border-b border-white/10 pb-4">
+        <div className="flex items-center gap-4">
+        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_#3b82f6]" />
+        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-500">Terminal 1 // Lobby Open</span>
+        </div>
+        <div className="text-right">
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Passagerer: {gameState.players.length}</span>
+        </div>
+        </div>
+
+        {/* Central Code Display */}
+        <div className="relative z-10 flex flex-col items-center mb-16 animate-in fade-in slide-in-from-top-8 duration-700">
+        <div className="text-[10px] font-black mb-4 text-slate-400 uppercase tracking-[0.6em] bg-slate-900/80 px-4 py-1 rounded-full border border-white/5 backdrop-blur-md">
+        Entry Authentication
+        </div>
+        <div className="relative group">
+        <div className="absolute -inset-4 bg-blue-600/20 blur-2xl group-hover:bg-blue-600/30 transition-all" />
+        <div className="relative bg-slate-900 border-2 border-blue-500/50 px-12 py-6 rounded-3xl shadow-2xl">
+        <div className="text-8xl md:text-9xl font-black text-white tracking-[0.2em] font-mono leading-none">
+        {gameState.code}
+        </div>
+        <div className="absolute inset-0 w-full h-1 bg-blue-400/20 shadow-[0_0_15px_#3b82f6] opacity-50 animate-[scanline_3s_linear_infinite]" />
+        </div>
+        </div>
+        </div>
+
+        {/* Player List (Boarding Passes med Spiller-farver) */}
+        <div className="flex flex-wrap gap-8 mb-12 justify-center max-w-6xl overflow-y-auto pb-8 relative z-10 no-scrollbar">
+        {gameState.players.map((p, idx) => {
+          // Vi bruger spillerens farve, eller falder tilbage til blå hvis ingen findes
+          const playerColor = p.color || '#3b82f6';
+
+          return (
+            <div
+            key={p.id}
+            className="w-72 group relative animate-in fade-in zoom-in duration-500"
+            style={{ animationDelay: `${idx * 100}ms` }}
+            >
+            {/* Boarding Pass Design */}
+            <div
+            className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl transition-all group-hover:-translate-y-1"
+            style={{ borderColor: playerColor + '40' }} // 40 = gennemsigtighed
+            >
+            {/* Top Section - Bruger Spillerfarve */}
+            <div
+            className="p-3 flex justify-between items-center text-white"
+            style={{ backgroundColor: playerColor }}
+            >
+            <div className="flex items-center gap-2">
+            <Plane size={14} className="rotate-90" />
+            <span className="text-[9px] font-black uppercase tracking-tighter">Europe Express boarding</span>
+            </div>
+            <span className="text-[9px] font-mono bg-black/20 px-2 py-0.5 rounded">#{p.id.slice(0,4)}</span>
+            </div>
+
+            {/* Main Section */}
+            <div className="p-5 flex gap-5 items-center bg-gradient-to-br from-slate-900 to-slate-800">
+            <div
+            className="text-5xl w-16 h-16 flex items-center justify-center rounded-2xl border transition-transform group-hover:scale-110 shadow-lg"
+            style={{
+              backgroundColor: playerColor + '20', // Meget lys version af spillerfarven
+              borderColor: playerColor + '50'
+            }}
+            >
+            {p.avatar}
+            </div>
+            <div className="flex flex-col">
+            <span className="text-[9px] font-black uppercase tracking-widest mb-1" style={{ color: playerColor }}>
+            Passenger
+            </span>
+            <span className="font-black text-xl uppercase leading-none tracking-tight">{p.name}</span>
+            <div className="mt-2 flex items-center gap-2">
+            <div className="h-1.5 w-16 bg-white/5 rounded-full overflow-hidden">
+            <div
+            className="h-full animate-pulse"
+            style={{ backgroundColor: playerColor, width: '100%' }}
+            />
+            </div>
+            <span className="text-[8px] text-slate-500 font-bold uppercase">Ready</span>
+            </div>
+            </div>
+            </div>
+
+            {/* Footer (Dashed line & Info) */}
+            <div className="border-t border-dashed border-white/20 p-4 flex justify-between bg-slate-950/50 font-mono">
+            <div className="text-left">
+            <div className="text-[8px] font-bold text-slate-500 uppercase">Class</div>
+            <div className="font-black text-xs" style={{ color: playerColor }}>EXECUTIVE</div>
+            </div>
+            <div className="text-center">
+            <div className="text-[8px] font-bold text-slate-500 uppercase">Seat</div>
+            <div className="font-black text-xs uppercase">{idx + 1}{String.fromCharCode(65 + (idx % 6))}</div>
+            </div>
+            <div className="text-right">
+            <div className="text-[8px] font-bold text-slate-500 uppercase">Status</div>
+            <div className="font-black text-xs text-emerald-400">OPEN</div>
+            </div>
+            </div>
+            </div>
+
+            {/* Subtilt glød bag passet i spillerens farve */}
+            <div
+            className="absolute -inset-2 blur-2xl opacity-0 group-hover:opacity-20 transition-opacity pointer-events-none"
+            style={{ backgroundColor: playerColor }}
+            />
+            </div>
+          );
+        })}
+        </div>
+
+        {/* Host Control Area */}
+        {role === 'host' && (
+          <div className="mt-auto mb-12 relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+          <button
+          onClick={initGame}
+          className="group relative bg-white text-slate-950 px-20 py-6 rounded-2xl font-black uppercase tracking-[0.2em] shadow-[0_20px_50px_rgba(255,255,255,0.1)] hover:bg-blue-600 hover:text-white transition-all active:scale-95"
+          >
+          <div className="flex items-center gap-4 text-xl">
+          <CheckCircle2 size={24} />
+          Confirm & Launch
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+          </button>
+          </div>
+        )}
+        </div>
+        </>
     );
   }
 
@@ -1928,6 +2423,24 @@ export default function App() {
         .custom-map-label::before {
           border-top-color: rgba(15, 23, 42, 0.9) !important;
         }
+
+        @keyframes dash-flow {
+          to { stroke-dashoffset: -20; }
+        }
+
+        .animated-route {
+          animation: dash-flow 0.8s linear infinite;
+          stroke-dasharray: 10, 6;
+        }
+        @keyframes draw-route {
+          from { stroke-dashoffset: var(--route-length); }
+          to   { stroke-dashoffset: 0; }
+        }
+
+        .route-draw {
+          animation: draw-route 1.2s ease-out forwards;
+        }
+
         `}</style>
 
         {/* VENSTRE SIDE: KORT OG OVERLAYS */}
