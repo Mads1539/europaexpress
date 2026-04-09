@@ -28,7 +28,7 @@ export const TRANSIT_LINES = [
 {
   name: "0330895039",
   number: "2",
-  type: "bus",
+  type: "train",
   color: "#b300eb",
   category: "pågatåg",
   frequency: 70,
@@ -40,7 +40,7 @@ export const TRANSIT_LINES = [
 {
   name: "0316592367",
   number: "10",
-  type: "bus",
+  type: "train",
   color: "#b300eb",
   category: "pågatåg",
   frequency: 30,

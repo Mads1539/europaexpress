@@ -107,6 +107,13 @@ const AI_DIFFICULTY = {
   hard:   { label: "Svær",   emoji: "🔴", description: "Optimal rute til målet" },
 };
 
+const getDashArray = (type) => {
+  switch(type) {
+    case 'bus':   return '6, 4';
+    case 'ferry': return '2, 5';
+    default:      return null;
+  }
+};
 
 
 // =========================================================================
@@ -760,6 +767,7 @@ export default function App() {
 
 
   // --- C. KORT-OPBYGNING ---
+
   useEffect(() => {
     if (!leafletReady || !mapRef.current || (gameState?.status !== 'playing' && gameState?.status !== 'finished')) return;
     const L = window.L;
@@ -776,10 +784,7 @@ export default function App() {
         const currentZoom = mapInstance.current.getZoom();
         const container = mapRef.current;
         if (!container) return;
-
-        // Vi bruger kun 3 tilstande nu: Skjult -> Navn -> Udfoldet
         container.classList.remove('hide-route-labels', 'state-name', 'state-expanded');
-
         if (currentZoom < 7) {
           container.classList.add('hide-route-labels');
         } else if (currentZoom >= 7 && currentZoom < 11) {
@@ -789,28 +794,109 @@ export default function App() {
         }
       };
       mapInstance.current.on('zoomend', handleZoom);
-      // Slå auto-zoom fra ved manuel interaktion
       mapInstance.current.on('dragstart', () => { setAutoZoom(false); autoZoomRef.current = false; });
       mapInstance.current.on('zoomstart', () => {
         if (!mapInstance.current._zooming_programmatic) {
           setAutoZoom(false); autoZoomRef.current = false;
         }
       });
-      // Kør den med det samme for at sætte start-tilstanden
       setTimeout(handleZoom, 100);
 
-      // 2. Lag
+      // 2. Tile-lag
       nightLayerRef.current = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { zIndex: 1 }).addTo(mapInstance.current);
       dayLayerRef.current = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', { zIndex: 2, opacity: 1 }).addTo(mapInstance.current);
 
-      // 3. Opsaml data
-      const segmentUsage = {};
+      // 3. Opsaml terminus-data
       const terminusData = {};
 
-      // --- 1. TEGN ALLE BYER SOM SMÅ HVIDE PRIKKER ---
+      // --- LAG 1: BAGGRUNDSNET (tynde ruter, tegnes først så alt andet er ovenpå) ---
+      TRANSIT_LINES.forEach(async line => {
+        if (line.type === 'flight') return;
+        for (let i = 0; i < line.cities.length - 1; i++) {
+          const fromCity = line.cities[i];
+          const toCity = line.cities[i + 1];
+          const pos1 = CITIES[fromCity]?.pos;
+          const pos2 = CITIES[toCity]?.pos;
+          if (!pos1 || !pos2) continue;
+          let points = [pos1, pos2];
+          try {
+            const key = `${line.type}_${[fromCity, toCity].sort().join('_')}`;
+            const cacheRef = doc(db, 'artifacts', appId, 'public', 'data', 'routes', key);
+            const cached = await getDoc(cacheRef);
+            if (cached.exists()) {
+              points = cached.data().path.map(p => [p.lat, p.lng]);
+            }
+          } catch { }
+          L.polyline(points, {
+            color: line.color,
+            weight: 1,
+            opacity: 0.35,
+            lineJoin: 'round',
+            dashArray: getDashArray(line.type),
+          }).addTo(mapInstance.current);
+        }
+      });
+
+      // --- LAG 2: SMÅ STATIONS-PRIKKER + TERMINUS-DATA ---
+      TRANSIT_LINES.forEach(line => {
+        if (line.type === 'bus' || line.type === 'flight') return;
+
+        line.cities.forEach((cityName, index) => {
+          const cityData = CITIES[cityName];
+          if (!cityData) return;
+
+          const isStartOrEnd = index === 0 || index === line.cities.length - 1;
+          const isMajor = isStartOrEnd || cityData.hub || cityData.airport || cityData.ferry || gameState.goalCity === cityName;
+
+          if (!isMajor) {
+            L.circleMarker(cityData.pos, {
+              radius: 3,
+              fillColor: "#ffffff",
+              color: "#000",
+              weight: 1,
+              fillOpacity: 0.8,
+              interactive: true
+            })
+            .addTo(mapInstance.current)
+            .bindTooltip(cityName, {
+              direction: 'top',
+              className: 'small-station-tooltip',
+              offset: [0, -5]
+            });
+          }
+
+          if (isMajor) {
+            if (!terminusData[cityName]) {
+              terminusData[cityName] = { pos: cityData.pos, routes: [], city: cityData };
+            }
+            const addRouteDirection = (toCity) => {
+              if (!toCity) return;
+              const directionKey = `${line.name}-${toCity}`;
+              if (!terminusData[cityName].routes.find(r => r.key === directionKey)) {
+                terminusData[cityName].routes.push({
+                  key: directionKey,
+                  name: line.name,
+                  color: line.color,
+                  to: toCity
+                });
+              }
+            };
+            if (index === 0) {
+              addRouteDirection(line.cities[line.cities.length - 1]);
+            } else if (index === line.cities.length - 1) {
+              addRouteDirection(line.cities[0]);
+            } else {
+              addRouteDirection(line.cities[0]);
+              addRouteDirection(line.cities[line.cities.length - 1]);
+            }
+          }
+        });
+      });
+
+      // --- LAG 3: ALLE BYER SOM SMÅ HVIDE PRIKKER ---
       Object.entries(CITIES).forEach(([cityName, cityData]) => {
         if (!cityData.pos) return;
-        window.L.circleMarker(cityData.pos, {
+        L.circleMarker(cityData.pos, {
           radius: 1.5,
           fillColor: "#ffffff",
           color: "#000",
@@ -826,26 +912,22 @@ export default function App() {
         });
       });
 
-      // --- 2. TEGN MÅLFLAG (🏁) ---
+      // --- LAG 4: MÅLFLAG ---
       if (currentPlayer?.destination && CITIES[currentPlayer.destination]) {
         const destPos = CITIES[currentPlayer.destination].pos;
-
-        // Rød aura
-        window.L.circleMarker(destPos, {
+        L.circleMarker(destPos, {
           radius: 12,
           color: '#ef4444',
           weight: 2,
           fillOpacity: 0.2,
           className: 'animate-pulse'
         }).addTo(mapInstance.current);
-
-        // Emoji Flag
-        window.L.marker(destPos, {
-          icon: window.L.divIcon({
+        L.marker(destPos, {
+          icon: L.divIcon({
             html: `<div style="font-size: 22px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">🏁</div>`,
-                                 className: 'destination-marker',
-                                 iconSize: [24, 24],
-                                 iconAnchor: [12, 12]
+                          className: 'destination-marker',
+                          iconSize: [24, 24],
+                          iconAnchor: [12, 12]
           }),
           zIndexOffset: 1000
         })
@@ -857,79 +939,17 @@ export default function App() {
         });
       }
 
-      TRANSIT_LINES.forEach(line => {
-        if (line.type === 'bus' || line.type === 'flight') return;
-
-        // Registrer byer og tegn små stationer
-        line.cities.forEach((cityName, index) => {
-          const cityData = CITIES[cityName];
-          if (!cityData) return;
-
-          const isStartOrEnd = index === 0 || index === line.cities.length - 1;
-          const isMajor = isStartOrEnd || cityData.hub || cityData.airport || cityData.ferry || gameState.goalCity === cityName;
-
-          // --- NYT: Tegn de små stationer som prikker i rutens farve ---
-          if (!isMajor) {
-            L.circleMarker(cityData.pos, {
-              radius: 3,
-              fillColor: line.color,
-              color: "#000",
-              weight: 1,
-              fillOpacity: 0.8,
-              interactive: true
-            })
-            .addTo(mapInstance.current)
-            .bindTooltip(cityName, {
-              direction: 'top',
-              className: 'small-station-tooltip',
-              offset: [0, -5]
-            });
-          }
-
-          // --- Registrer data til de store labels (Terminus/Hubs) ---
-          if (isMajor) {
-            if (!terminusData[cityName]) {
-              terminusData[cityName] = { pos: cityData.pos, routes: [], city: cityData };
-            }
-
-            const addRouteDirection = (toCity) => {
-              if (!toCity) return;
-              const directionKey = `${line.name}-${toCity}`;
-              if (!terminusData[cityName].routes.find(r => r.key === directionKey)) {
-                terminusData[cityName].routes.push({
-                  key: directionKey,
-                  name: line.name,
-                  color: line.color,
-                  to: toCity
-                });
-              }
-            };
-
-            if (index === 0) {
-              addRouteDirection(line.cities[line.cities.length - 1]);
-            } else if (index === line.cities.length - 1) {
-              addRouteDirection(line.cities[0]);
-            } else {
-              addRouteDirection(line.cities[0]);
-              addRouteDirection(line.cities[line.cities.length - 1]);
-            }
-          }
-        });
-      });
-
-      // 4. Tegn de store interaktive labels (Terminus/Hubs)
-      // 4. Tegn interaktive labels OG PULSERENDE AURA
+      // --- LAG 5: TERMINUS/HUB MARKERS (øverst så de er klikbare) ---
       Object.entries(terminusData).forEach(([cityName, data]) => {
         const marker = L.circleMarker(data.pos, {
-          radius: 6,
+          radius: 3,
           fillColor: "#ffffff",
           color: "#0f172a",
-          weight: 2,
+          weight: 3,
           fillOpacity: 1,
-          className: 'station-marker-pulse' // Her tilføjes animationen
+          className: 'station-marker-pulse'
         }).addTo(mapInstance.current);
 
-        // Vi kan også farve selve kanten af prikken med rutens farve for mere effekt
         if (data.routes.length > 0) {
           marker.setStyle({ color: data.routes[0].color });
         }
@@ -1133,11 +1153,68 @@ export default function App() {
       const avatarDisplay = p.avatar || (p.name ? p.name[0].toUpperCase() : '?');
       const playerColor = p.color || '#3b82f6';
 
+    const transportEmoji = p.isTraveling ? {
+      'train':   '🚂',
+      'bus':     '🚌',
+      'flight':  '✈️',
+      'ferry':   '⛴️',
+      'taxi':    '🚕',
+      'walking': '🚶',
+    }[p.travelType] ?? '🚂' : '';
+
+    const lineLabel = p.isTraveling ? (p.segments?.[0]?.lineId?.slice(0, 4) ?? '') : '';
+    const destination = p.isTraveling ? (p.destinationCity ?? '') : '';
+
     const iconHtml = `
-    <div style="background: ${playerColor}; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; transition: background 0.3s ease;">
-    ${avatarDisplay}
-    </div>
-    `;
+    <div style="display: flex; align-items: center; gap: 0;">
+
+    <!-- Spiller-cirkel -->
+    <div style="
+    background: ${playerColor};
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; line-height: 1;
+    flex-shrink: 0;
+    position: relative; z-index: 2;
+    ">${avatarDisplay}</div>
+
+    <!-- Pill (kun synlig når spilleren rejser) -->
+    ${p.isTraveling ? `
+      <div style="
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 0 20px 20px 0;
+      padding: 0 10px 0 14px;
+      margin-left: -8px;
+      height: 28px;
+      display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+      white-space: nowrap;
+      ">
+      <!-- Linje-badge -->
+      <div style="
+      background: ${playerColor};
+      color: white;
+      font-size: 10px; font-weight: 900;
+      padding: 2px 5px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+      ">${lineLabel}</div>
+
+      <!-- Destination -->
+      <span style="color: white; font-size: 11px; font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis;">
+      mod ${destination}
+      </span>
+
+      <!-- Transport-ikon -->
+      <span style="font-size: 14px;">${transportEmoji}</span>
+      </div>` : ''}
+
+      </div>
+      `;
 
     if (markersRef.current[p.id]) {
       markersRef.current[p.id].setLatLng(pos);
@@ -1419,108 +1496,128 @@ export default function App() {
     if (!cur || cur.status !== 'playing') return;
 
     const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', cur.code);
-    let updated = false;
+    let anyUpdated = false;
 
-    const newPlayers = cur.players.map(p => {
+    const newPlayers = await Promise.all(cur.players.map(async (p) => {
       if (!p.isAI || p.isTraveling) return p;
 
       const goalPos = CITIES[cur.goalCity]?.pos;
       const currentPos = CITIES[p.currentCity]?.pos;
       if (!goalPos || !currentPos) return p;
 
-      const availableLines = TRANSIT_LINES.filter(line =>
-      line.cities.includes(p.currentCity)
-      );
-      if (availableLines.length === 0) return p;
+      // ── Byg kandidatliste ────────────────────────────────────────────────────
+      // Kandidat: { dest, type, lineName, cost, duration, line }
+      const candidates = [];
 
-      let chosenLine = null;
-      let chosenDest = null;
+      // 1. Tog/bus/færge via TRANSIT_LINES
+      TRANSIT_LINES.forEach(line => {
+        const idx = line.cities.indexOf(p.currentCity);
+        if (idx === -1) return;
+        const allNeighbours = [...line.cities.slice(0, idx), ...line.cities.slice(idx + 1)];
+        allNeighbours.forEach(city => {
+          if (!CITIES[city]) return;
+          const pos2 = CITIES[city].pos;
+          const config = TRAVEL_TYPES[line.type] || TRAVEL_TYPES.train;
+          const dist = getDist(currentPos, pos2);
+          const duration = (dist / config.speed) * 60;
+          const cost = Math.round(config.baseCost + dist * config.costPerKm);
+          candidates.push({ dest: city, type: line.type, lineName: line.name, cost, duration, line });
+        });
+      });
+
+      // 2. Lokal transport: gang og taxa til nabobyer inden for 50 km
+      const nearby = getNearbyStations(p.currentCity);
+      nearby.forEach(({ name: city, pos }) => {
+        const dist = getDist(currentPos, pos);
+        // Gang
+        if (dist <= 8) {
+          const walkDuration = (dist / 5) * 60;
+          candidates.push({ dest: city, type: 'walking', lineName: 'WALK', cost: 0, duration: walkDuration, line: null });
+        }
+        // Taxa
+        const taxiCost = Math.round(50 + dist * 15);
+        const taxiDuration = (dist / 40) * 60;
+        candidates.push({ dest: city, type: 'taxi', lineName: 'TAXI', cost: taxiCost, duration: taxiDuration, line: null });
+      });
+
+      if (candidates.length === 0) return p;
+
+      // ── Filtrer ──────────────────────────────────────────────────────────────
+      const affordable = candidates.filter(c => p.money >= c.cost);
+      if (affordable.length === 0) return p;
+
+      // Undgå at rejse tilbage til den by AI'en kom fra (forhindrer ping-pong)
+      const notBacktrack = affordable.filter(c => c.dest !== p.lastCity);
+      const pool = notBacktrack.length > 0 ? notBacktrack : affordable;
+
+      // ── Vælg destination ud fra sværhedsgrad ─────────────────────────────────
+      let chosen;
 
       if (p.aiDifficulty === 'easy') {
-        const line = availableLines[Math.floor(Math.random() * availableLines.length)];
-        const idx = line.cities.indexOf(p.currentCity);
-        const candidates = [...line.cities.slice(0, idx), ...line.cities.slice(idx + 1)].filter(c => CITIES[c]);
-        if (!candidates.length) return p;
-        chosenDest = candidates[Math.floor(Math.random() * candidates.length)];
-        chosenLine = line;
+        chosen = pool[Math.floor(Math.random() * pool.length)];
 
       } else if (p.aiDifficulty === 'medium') {
-        let bestDist = getDist(currentPos, goalPos);
-        availableLines.forEach(line => {
-          const idx = line.cities.indexOf(p.currentCity);
-          [...line.cities.slice(0, idx), ...line.cities.slice(idx + 1)].forEach(city => {
-            const pos = CITIES[city]?.pos;
-            if (!pos) return;
-            const d = getDist(pos, goalPos);
-            if (d < bestDist) { bestDist = d; chosenDest = city; chosenLine = line; }
-          });
+        // Vælg den kandidat der bringer os tættest på målet
+        chosen = pool.reduce((best, c) => {
+          const d = getDist(CITIES[c.dest]?.pos, goalPos);
+          return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
         });
-        if (!chosenLine) {
-          const line = availableLines[Math.floor(Math.random() * availableLines.length)];
-          const idx = line.cities.indexOf(p.currentCity);
-          const candidates = [...line.cities.slice(0, idx), ...line.cities.slice(idx + 1)].filter(c => CITIES[c]);
-          if (!candidates.length) return p;
-          chosenDest = candidates[Math.floor(Math.random() * candidates.length)];
-          chosenLine = line;
-        }
 
       } else {
-        // hard: scorer på afstand til mål + rejsetid
-        let bestScore = Infinity;
-        availableLines.forEach(line => {
-          const config = TRAVEL_TYPES[line.type] || TRAVEL_TYPES.train;
-          const idx = line.cities.indexOf(p.currentCity);
-          [...line.cities.slice(0, idx), ...line.cities.slice(idx + 1)].forEach(city => {
-            const pos = CITIES[city]?.pos;
-            if (!pos) return;
-            const distToGoal = getDist(pos, goalPos);
-            const travelTime = getDist(currentPos, pos) / config.speed;
-            const score = distToGoal + travelTime * 50;
-            if (score < bestScore) { bestScore = score; chosenDest = city; chosenLine = line; }
-          });
+        // hard: score = afstand til mål + rejsetid i minutter * 2 (afvej hurtighed vs. retning)
+        chosen = pool.reduce((best, c) => {
+          const distToGoal = getDist(CITIES[c.dest]?.pos, goalPos);
+          const score = distToGoal + c.duration * 2;
+          const bestScore = getDist(CITIES[best.dest]?.pos, goalPos) + best.duration * 2;
+          return score < bestScore ? c : best;
         });
       }
 
-      if (!chosenLine || !chosenDest) return p;
+      if (!chosen) return p;
 
-      const startPos2 = CITIES[p.currentCity]?.pos;
-      const endPos2 = CITIES[chosenDest]?.pos;
-      if (!startPos2 || !endPos2) return p;
+      // ── Hent rigtig rute fra cache/API (samme som travel()) ──────────────────
+      const destPos = CITIES[chosen.dest]?.pos;
+      if (!destPos) return p;
 
-      const config = TRAVEL_TYPES[chosenLine.type] || TRAVEL_TYPES.train;
-      const dist = getDist(startPos2, endPos2);
+      let path;
+      try {
+        path = await fetchAndCacheRoute(p.currentCity, chosen.dest, chosen.type, currentPos, destPos);
+      } catch {
+        path = [currentPos, destPos];
+      }
+
+      const dist = getDist(currentPos, destPos);
+      const config = TRAVEL_TYPES[chosen.type] || TRAVEL_TYPES.train;
       const duration = (dist / config.speed) * 60;
-      const cost = Math.round(config.baseCost + dist * config.costPerKm);
 
-      if (p.money < cost) return p;
-
-      updated = true;
+      anyUpdated = true;
       return {
         ...p,
         isTraveling: true,
-        destinationCity: chosenDest,
-        travelType: chosenLine.type,
-        money: p.money - cost,
+        destinationCity: chosen.dest,
+        travelType: chosen.type,
+        lastCity: p.currentCity, // husk hvorfra vi kom
+        money: p.money - chosen.cost,
         segments: [{
           from: p.currentCity,
-          to: chosenDest,
+          to: chosen.dest,
           departure: cur.gameTime,
           arrival: cur.gameTime + duration,
-          pathData: JSON.stringify([startPos2, endPos2].map(pt => ({ lat: pt[0], lng: pt[1] }))),
-                                       lineId: String(chosenLine.id || chosenLine.name),
-                                       arrivalRadiusKm: 2.0,
+          pathData: JSON.stringify(path.map(pt => ({ lat: pt[0], lng: pt[1] }))),
+                                                         lineId: String(chosen.lineName || chosen.type),
+                                                         arrivalRadiusKm: ARRIVAL_RADIUS_KM[chosen.type] ?? 1.5,
         }],
         history: [...(p.history || []), {
-          type: chosenLine.type,
+          type: chosen.type,
           from: p.currentCity,
-          to: chosenDest,
-          line: chosenLine.name,
+          to: chosen.dest,
+          line: chosen.lineName || chosen.type,
           time: cur.gameTime,
         }],
       };
-    });
+    }));
 
-    if (updated) {
+    if (anyUpdated) {
       await updateDoc(sessionRef, { players: newPlayers });
     }
   };
@@ -1723,6 +1820,13 @@ export default function App() {
             const pathForFirebase = points.map(p => ({ lat: p[0], lng: p[1] }));
             setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() }).catch(() => {});
           }
+        } else if (line.type === 'bus') {
+          const result = await fetchOSRMDriving(pos1, pos2, 'driving');
+          if (result?.path) {
+            points = result.path;
+            const pathForFirebase = points.map(p => ({ lat: p[0], lng: p[1] }));
+            setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() }).catch(() => {});
+          }
         } else if (line.type === 'ferry') {
           const result = await fetchOSRMDriving(pos1, pos2, 'driving');
           if (result?.path) points = result.path;
@@ -1743,7 +1847,7 @@ export default function App() {
         weight: 5,
         opacity: 0.2,
         lineJoin: 'round',
-        offset,
+        dashArray: getDashArray(line.type),
       }).addTo(mapInstance.current);
 
       const animLayer = L.polyline(points, {
@@ -1751,7 +1855,7 @@ export default function App() {
         weight: 3,
         opacity: 0.9,
         lineJoin: 'round',
-        offset,
+        dashArray: getDashArray(line.type),
       }).addTo(mapInstance.current);
 
       const pathEl = animLayer.getElement();
@@ -1838,6 +1942,68 @@ export default function App() {
     const minutes = Math.round(t % 60);
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
   };
+
+  const [cacheProgress, setCacheProgress] = useState(null);
+
+  const cacheAllRoutes = async () => {
+    const allSegments = [];
+
+    // Saml alle unikke segmenter på tværs af alle linjer
+    const seen = new Set();
+    TRANSIT_LINES.forEach(line => {
+      if (line.type === 'flight') return;
+      for (let i = 0; i < line.cities.length - 1; i++) {
+        const fromCity = line.cities[i];
+        const toCity = line.cities[i + 1];
+        const key = `${line.type}_${[fromCity, toCity].sort().join('_')}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        allSegments.push({ fromCity, toCity, type: line.type });
+      }
+    });
+
+    let done = 0;
+    setCacheProgress({ done: 0, total: allSegments.length });
+
+    for (const { fromCity, toCity, type } of allSegments) {
+      const pos1 = CITIES[fromCity]?.pos;
+      const pos2 = CITIES[toCity]?.pos;
+      if (!pos1 || !pos2) { done++; continue; }
+
+      const key = `${type}_${[fromCity, toCity].sort().join('_')}`;
+      const cacheRef = doc(db, 'artifacts', appId, 'public', 'data', 'routes', key);
+
+      // Skip hvis allerede cachet
+      try {
+        const cached = await getDoc(cacheRef);
+        if (cached.exists()) { done++; setCacheProgress({ done: ++done, total: allSegments.length }); continue; }
+      } catch { }
+
+      // Hent ruten
+      let path = null;
+      if (type === 'train') {
+        const result = await fetchBRouterRoute(pos1, pos2);
+        path = result?.path;
+      } else {
+        const result = await fetchOSRMDriving(pos1, pos2, 'driving');
+        path = result?.path;
+      }
+
+      if (path) {
+        const pathForFirebase = path.map(p => ({ lat: p[0], lng: p[1] }));
+        await setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() });
+      }
+
+      // Lille pause så vi ikke overbelaster APIerne
+      await new Promise(r => setTimeout(r, 300));
+      setCacheProgress({ done: ++done, total: allSegments.length });
+    }
+
+    setCacheProgress(null);
+    alert('✅ Alle ruter cachet!');
+  };
+
+
 
   // Hjælpefunktion: Haversine-formel til at beregne km mellem to koordinater
   const getDist = (pos1, pos2) => {
@@ -2569,6 +2735,31 @@ export default function App() {
         <button onClick={() => setDebugOpen(!debugOpen)} className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-white hover:bg-slate-800 transition-all">
         <Settings size={22} className={debugOpen ? 'rotate-90' : ''} />
         </button>
+
+        {/* Cache-knap - kun synlig for host */}
+        {role === 'host' && (
+          <div className="flex flex-col gap-2">
+          <button
+          onClick={cacheAllRoutes}
+          disabled={!!cacheProgress}
+          className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-white hover:bg-slate-800 disabled:opacity-50 transition-all"
+          title="Cache alle ruter"
+          >
+          {cacheProgress
+            ? <span className="text-xs font-bold">{cacheProgress.done}/{cacheProgress.total}</span>
+            : <Globe size={22} />
+          }
+          </button>
+          {cacheProgress && (
+            <div className="w-full bg-white/10 rounded-full h-1.5">
+            <div
+            className="bg-blue-400 h-1.5 rounded-full transition-all"
+            style={{ width: `${(cacheProgress.done / cacheProgress.total) * 100}%` }}
+            />
+            </div>
+          )}
+          </div>
+        )}
         </div>
         </div>
 
