@@ -385,7 +385,7 @@ export const CITIES = {
         "Mårslet": { pos: [56.06871, 10.16459], country: "DK", parent: null, size: "medium", hub: false, station: "Mårslet Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
         "Nehrus Allé": { pos: [56.18649, 10.19339], country: "DK", parent: "Aarhus H", size: "small", hub: false, station: "Nehrus Allé Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
         "Nye": { pos: [56.22721, 10.20068], country: "DK", parent: null, size: "small", hub: false, station: "Nye Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
-        "Nørreport": { pos: [56.1616, 10.21163], country: "DK", parent: "Aarhus H", size: "small", hub: false, station: "Nørreport Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
+        "Nørreport Århus": { pos: [56.1616, 10.21163], country: "DK", parent: "Aarhus H", size: "small", hub: false, station: "Nørreport Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
         "Nørrevænget": { pos: [56.09217, 10.1513], country: "DK", parent: "Tranbjerg", size: "small", hub: false, station: "Nørrevænget Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },
         "Odder": { pos: [55.97179, 10.15059], country: "DK", parent: null, size: "large", hub: true, station: "Odder Station", bus: "Odder Busterminal", ferry: null, airport: null, category: "DK_Midtjylland" },
         "Olof Palmes Allé": { pos: [56.1897, 10.18398], country: "DK", parent: "Aarhus H", size: "small", hub: false, station: "Olof Palmes Allé Station", bus: null, ferry: null, airport: null, category: "DK_Midtjylland" },

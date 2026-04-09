@@ -46,3 +46,4 @@ export const CATEGORY_STYLE = {
   "DK_S-Train_F": { label: "F", bg: "bg-yellow-400", text: "text-white", showNumber: false },
   "DK_S-Train_H": { label: "H", bg: "bg-red-600", text: "text-white", showNumber: true },
 };
+

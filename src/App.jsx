@@ -97,8 +97,8 @@ const AVATARS = [
 const STOP_DURATION = 0.5;
 
 // AI-spillere: navne, avatars og sværhedsgrader
-const CPU_NAMES = ["HAL-9000", "EUROBOT", "KONDOR", "NEXUS", "ATLAS", "ORION"];
-const CPU_AVATARS = ["🤖", "👾", "🦾", "🛸", "🧠", "⚡"];
+const CPU_NAMES = ["HAL-9000", "EUROBOT", "KONDOR", "NEXUS", "ATLAS", "ORION" , "ROBO-TRON" , "TRAVELBOT" , "TITAN" , "MECHANIX" , "S.A.M"];
+const CPU_AVATARS = ["🤖", "👾", "🦾", "🛸", "🧠", "⚡", "📱", "💻", "🖥"];
 const CPU_COLORS = ["#dc2626", "#7c3aed", "#0891b2", "#059669", "#d97706", "#db2777"];
 
 const AI_DIFFICULTY = {
@@ -223,7 +223,7 @@ const fetchOSRMDriving = async (startPos, endPos, profile = 'driving') => {
     const path = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
     const distKm = data.routes[0].distance / 1000;
     return { path, distance: distKm };
-  } catch {
+  } catch {OPEN
     return null;
   }
 };
@@ -417,6 +417,79 @@ const findPath = (startCity, endCity, transportMode) => {
 
   return null;
 };
+
+// Multi-modal pathfinding: finder korteste vej på tværs af alle transporttyper
+// Returnerer array af { from, to, type, lineName } steps
+const findMultimodalPath = (startCity, goalCity) => {
+  if (startCity === goalCity) return [];
+
+  // Byg samlet adjacency-graf på tværs af alle transporttyper
+  // node: bynavn, edge: { to, type, lineName, dist }
+  const adjacency = {};
+
+  const addEdge = (from, to, type, lineName) => {
+    if (!adjacency[from]) adjacency[from] = [];
+    if (!adjacency[to]) adjacency[to] = [];
+    const dist = getDist(CITIES[from]?.pos, CITIES[to]?.pos);
+    adjacency[from].push({ to, type, lineName, dist });
+    adjacency[to].push({ to: from, type, lineName, dist });
+  };
+
+  TRANSIT_LINES.forEach(line => {
+    if (!line.cities || line.cities.length < 2) return;
+    for (let i = 0; i < line.cities.length - 1; i++) {
+      const u = line.cities[i];
+      const v = line.cities[i + 1];
+      if (u && v && CITIES[u] && CITIES[v]) {
+        addEdge(u, v, line.type, line.name);
+      }
+    }
+  });
+
+  // Dijkstra — vægtet på fysisk afstand så vi finder den geografisk korteste rute
+  const dist = {};
+  const prev = {}; // prev[city] = { from, type, lineName }
+  const visited = new Set();
+  const queue = [{ city: startCity, cost: 0 }];
+
+  for (const city of Object.keys(CITIES)) dist[city] = Infinity;
+  dist[startCity] = 0;
+
+  while (queue.length > 0) {
+    // Find billigste ubesøgte node
+    queue.sort((a, b) => a.cost - b.cost);
+    const { city: curr, cost: currCost } = queue.shift();
+
+    if (visited.has(curr)) continue;
+    visited.add(curr);
+
+    if (curr === goalCity) break;
+
+    for (const edge of (adjacency[curr] || [])) {
+      if (visited.has(edge.to)) continue;
+      const newCost = currCost + edge.dist;
+      if (newCost < dist[edge.to]) {
+        dist[edge.to] = newCost;
+        prev[edge.to] = { from: curr, type: edge.type, lineName: edge.lineName };
+        queue.push({ city: edge.to, cost: newCost });
+      }
+    }
+  }
+
+  if (dist[goalCity] === Infinity) return null; // Ingen rute fundet
+
+  // Rekonstruér sti
+  const steps = [];
+  let cur = goalCity;
+  while (prev[cur]) {
+    const { from, type, lineName } = prev[cur];
+    steps.unshift({ from, to: cur, type, lineName });
+    cur = from;
+  }
+
+  return steps; // array af { from, to, type, lineName }
+};
+
 const StaticMiniMap = ({ currentCityPos, destinations, color }) => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -912,30 +985,91 @@ export default function App() {
         });
       });
 
-      // --- LAG 4: MÅLFLAG ---
-      if (currentPlayer?.destination && CITIES[currentPlayer.destination]) {
-        const destPos = CITIES[currentPlayer.destination].pos;
-        L.circleMarker(destPos, {
-          radius: 12,
-          color: '#ef4444',
-          weight: 2,
-          fillOpacity: 0.2,
-          className: 'animate-pulse'
-        }).addTo(mapInstance.current);
+      // --- LAG 4: MÅLBY MARKØR ---
+      if (gameState?.goalCity && CITIES[gameState.goalCity]) {
+        const destPos = CITIES[gameState.goalCity].pos;
+
+        const goalHtml = `
+        <div style="
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 60px;
+        height: 70px;
+        ">
+        <!-- Pulserende glow -->
+        <div style="
+        position: absolute;
+        width: 60px; height: 60px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(212,175,55,0.4) 0%, rgba(212,175,55,0) 70%);
+        animation: goal-pulse 2s ease-in-out infinite;
+        "></div>
+
+        <!-- Pin form -->
+        <div style="
+        position: relative;
+        width: 44px; height: 52px;
+        background: linear-gradient(145deg, #f5d080, #b8860b);
+        border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        clip-path: polygon(50% 100%, 0% 20%, 100% 20%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 20px rgba(212,175,55,0.6);
+        filter: drop-shadow(0 0 8px rgba(212,175,55,0.8));
+        ">
+        </div>
+
+        <!-- Cirkel med trofæ -->
+        <div style="
+        position: absolute;
+        top: 0;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #1a1200, #2d1f00);
+        border: 3px solid #d4af37;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        box-shadow: 0 0 15px rgba(212,175,55,0.5), inset 0 0 10px rgba(0,0,0,0.5);
+        ">🏆</div>
+        </div>
+
+        <style>
+        @keyframes goal-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.4); opacity: 1; }
+
+
+
+
+          /* Fjern den hvide Leaflet-standard baggrund og pil */
+          .goal-tooltip::before { display: none; }
+          .leaflet-tooltip.goal-tooltip { box-shadow: 0 0 16px rgba(212,175,55,0.3); }
+        }
+
+
+        </style>
+        `;
+
         L.marker(destPos, {
           icon: L.divIcon({
-            html: `<div style="font-size: 22px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">🏁</div>`,
-                          className: 'destination-marker',
-                          iconSize: [24, 24],
-                          iconAnchor: [12, 12]
+            html: goalHtml,
+            className: '',
+            iconSize: [30, 50],
+            iconAnchor: [30, 70],
           }),
           zIndexOffset: 1000
         })
         .addTo(mapInstance.current)
-        .bindTooltip(`DIT MÅL: ${currentPlayer.destination}`, {
+        .bindTooltip(`${gameState.goalCity}`, {
           permanent: true,
-          direction: 'right',
-          offset: [12, 0]
+          direction: 'top',
+          offset: [0, -75],
+          className: 'goal-tooltip'
         });
       }
 
@@ -1162,7 +1296,11 @@ export default function App() {
       'walking': '🚶',
     }[p.travelType] ?? '🚂' : '';
 
-    const lineLabel = p.isTraveling ? (p.segments?.[0]?.lineId?.slice(0, 4) ?? '') : '';
+    const lineId = p.segments?.[0]?.lineId;
+    const lineData = TRANSIT_LINES.find(l => l.name === lineId);
+    const lineStyle = CATEGORY_STYLE[lineData?.category] ?? CATEGORY_STYLE[lineData?.name];
+    const lineLabel = p.isTraveling ? (lineStyle?.label || lineData?.category?.split('_').pop() || '') : '';
+    const lineNumber = p.isTraveling ? (lineData?.number || '') : '';
     const destination = p.isTraveling ? (p.destinationCity ?? '') : '';
 
     const iconHtml = `
@@ -1202,7 +1340,8 @@ export default function App() {
       padding: 2px 5px;
       border-radius: 4px;
       letter-spacing: 0.5px;
-      ">${lineLabel}</div>
+      display: flex; gap: 4px; align-items: center;
+      ">${lineLabel}${lineNumber ? `<span style="opacity: 0.85;">${lineNumber}</span>` : ''}</div>
 
       <!-- Destination -->
       <span style="color: white; font-size: 11px; font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis;">
@@ -1550,27 +1689,50 @@ export default function App() {
       const notBacktrack = affordable.filter(c => c.dest !== p.lastCity);
       const pool = notBacktrack.length > 0 ? notBacktrack : affordable;
 
-      // ── Vælg destination ud fra sværhedsgrad ─────────────────────────────────
+      // ── Planlæg rute med multi-modal pathfinding (medium + hard) ────────────
+      // Easy: greedy enkelt-skridt. Medium/hard: følger optimal plan.
       let chosen;
 
       if (p.aiDifficulty === 'easy') {
+        // Tilfældig kandidat, undgår backtrack
         chosen = pool[Math.floor(Math.random() * pool.length)];
 
-      } else if (p.aiDifficulty === 'medium') {
-        // Vælg den kandidat der bringer os tættest på målet
-        chosen = pool.reduce((best, c) => {
-          const d = getDist(CITIES[c.dest]?.pos, goalPos);
-          return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
-        });
-
       } else {
-        // hard: score = afstand til mål + rejsetid i minutter * 2 (afvej hurtighed vs. retning)
-        chosen = pool.reduce((best, c) => {
-          const distToGoal = getDist(CITIES[c.dest]?.pos, goalPos);
-          const score = distToGoal + c.duration * 2;
-          const bestScore = getDist(CITIES[best.dest]?.pos, goalPos) + best.duration * 2;
-          return score < bestScore ? c : best;
-        });
+        // Find den fulde multi-modale rute til målet
+        const plan = findMultimodalPath(p.currentCity, cur.goalCity);
+        const nextStep = plan?.[0]; // Første skridt i planen
+
+        if (nextStep) {
+          // Find den kandidat der matcher næste skridt i planen
+          const match = pool.find(c => c.dest === nextStep.to && c.type === nextStep.type)
+          ?? pool.find(c => c.dest === nextStep.to) // samme destination, anden type
+          ?? null;
+
+          if (match) {
+            // Tilføj jitter så robotter ikke alle vælger identisk
+            const jitter = p.aiDifficulty === 'hard'
+            ? (Math.random() - 0.5) * 60   // ±30 km
+            : (Math.random() - 0.5) * 150; // ±75 km — medium er mere uforudsigelig
+
+            // Med jitter: 80% chance for at følge planen, 20% chance for afvigelse
+            const followPlan = Math.random() > (p.aiDifficulty === 'hard' ? 0.05 : 0.25);
+            chosen = followPlan ? match : pool[Math.floor(Math.random() * pool.length)];
+          } else {
+            // Planen virker ikke herfra (ingen afgang den vej) — greedy fallback
+            chosen = pool.reduce((best, c) => {
+              const jitter = (Math.random() - 0.5) * 100;
+              const d = getDist(CITIES[c.dest]?.pos, goalPos) + jitter;
+              return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
+            });
+          }
+        } else {
+          // Ingen rute fundet — greedy fallback
+          chosen = pool.reduce((best, c) => {
+            const jitter = (Math.random() - 0.5) * 100;
+            const d = getDist(CITIES[c.dest]?.pos, goalPos) + jitter;
+            return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
+          });
+        }
       }
 
       if (!chosen) return p;
@@ -2666,6 +2828,18 @@ export default function App() {
 
         .custom-scrollbar::-webkit-scrollbar { width: 3px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
+
+        .goal-tooltip {
+          background: #0f172a;
+          border: 1px solid #d4af37;
+          color: #f5d080;
+          font-weight: 700;
+          font-size: 13px;
+          border-radius: 12px;
+          padding: 6px 14px;
+          box-shadow: 0 0 16px rgba(212,175,55,0.3);
+          white-space: nowrap;
+        }
         `}</style>
 
         {/* VENSTRE SIDE: KORT-CENTRAL */}
