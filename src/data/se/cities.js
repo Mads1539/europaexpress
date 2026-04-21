@@ -16,7 +16,7 @@ export const CITIES = {
   "Klippan": { pos: [56.13075, 13.13042], country: "SE", hub: false, station: "Klippan Station", bus: "Klippan Station", ferry: null, airport: null, category: "SE_Skåne" },
   "Ystad": { pos: [55.42741, 13.82517], country: "SE", hub: true, station: "Ystad Station", bus: "Ystad Station", ferry: "Ystad-Bornholm/Polen", airport: null, category: "SE_Skåne" },
   "Malmö Airport": { pos: [55.54026, 13.3645], country: "SE", hub: false, station: null, bus: "Malmö Airport Sturup", ferry: null, airport: { name: "Malmö Airport (Sturup)", type: "international" }, category: "SE_Skåne" },
-  "Ängelholm-Helsingborg Airport": { pos: [56.28731, 12.86807], country: "DK", hub: false, station: null, bus: null, ferry: null, airport: { name: "Ängelholm-Helsingborg Airport", type: "regional" }, category: "" },
+  "Ängelholm-Helsingborg Airport": { pos: [56.28731, 12.86807], country: "DK", hub: false, station: null, bus: null, ferry: null, airport: { name: "Ängelholm-Helsingborg Airport", type: "regional" }, category: "SE_Skåne" },
   "Oxie": { pos: [55.54176, 13.09568], country: "SE", hub: false, station: "Oxie Station", bus: "Oxie Station", ferry: null, airport: null, category: "SE_Skåne" },
   "Svedala": { pos: [55.50684, 13.2329], country: "SE", hub: false, station: "Svedala Station", bus: "Svedala Station", ferry: null, airport: null, category: "SE_Skåne" },
   "Skurup": { pos: [55.48014, 13.49799], country: "SE", hub: false, station: "Skurup Station", bus: "Skurup Station", ferry: null, airport: null, category: "SE_Skåne" },
@@ -59,5 +59,5 @@ export const CITIES = {
   "Kvidinge": { pos: [56.1373, 13.04442], country: "SE", hub: false, station: "Kvidinge Station", bus: "Kvidinge Station", ferry: null, airport: null, category: "SE_Skåne" },
   "Perstorp": { pos: [56.13644, 13.39742], country: "SE", hub: false, station: "Perstorp Station", bus: "Perstorp Station", ferry: null, airport: null, category: "SE_Skåne" },
   "Tyringe": { pos: [56.15962, 13.59828], country: "SE", hub: false, station: "Tyringe Station", bus: "Tyringe Station", ferry: null, airport: null, category: "SE_Skåne" },
-    "Ystad färjehamn": { pos: [55.4266, 13.82609], country: "SE", hub: false, station: null, bus: null, ferry: "Ystad färjehamn", airport: null, category: "SE_Skåne" },
+  "Ystad Färjehamn": { pos: [55.4266, 13.82609], country: "SE", hub: false, station: null, bus: null, ferry: "Ystad färjehamn", airport: null, category: "SE_Skåne" },
 };

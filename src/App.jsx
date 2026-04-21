@@ -1,38 +1,122 @@
- import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { initializeApp } from "firebase/app";
 import {
-  getFirestore, doc, setDoc, onSnapshot, updateDoc, getDoc, arrayUnion
-} from 'firebase/firestore';
+  getFirestore,
+  doc,
+  setDoc,
+  onSnapshot,
+  updateDoc,
+  getDoc,
+  arrayUnion,
+} from "firebase/firestore";
 import {
-  getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged
-} from 'firebase/auth';
+  getAuth,
+  signInAnonymously,
+  signInWithCustomToken,
+  onAuthStateChanged,
+} from "firebase/auth";
 import {
-  Plane, Train, Bus, MapPin, Clock, Globe, Navigation,
-  LogOut, Sun, Moon, Settings, FastForward, Play, Pause, RotateCcw, Users, ChevronRight,
-  User, CheckCircle2, Ticket, AlertTriangle, XCircle, Info, Trophy, Flag, Activity
-} from 'lucide-react';
-import { COUNTRY_DATA } from './data/countries.js'; // Use relative path
-import { JOB_CATEGORIES, JOB_COUNT_BY_SIZE, JOB_REFRESH_INTERVAL, JACKPOT_CHANCE, JACKPOT_EVENTS, getAvailableCategories, generateJobListings, getLevelFromXP, getXPToNextLevel } from './data/jobs.js';
+  Plane,
+  Train,
+  Bus,
+  MapPin,
+  Clock,
+  Globe,
+  Navigation,
+  LogOut,
+  Sun,
+  Moon,
+  Settings,
+  FastForward,
+  Play,
+  Pause,
+  RotateCcw,
+  Users,
+  ChevronRight,
+  User,
+  CheckCircle2,
+  Ticket,
+  AlertTriangle,
+  XCircle,
+  Info,
+  Trophy,
+  Flag,
+  Activity,
+} from "lucide-react";
 
-import { MiniGame } from './components/MiniGame.jsx';
+//egne moduler
+
+import { auth, db, appId } from "./firebase.js";
+import {
+  CITIES,
+  TRANSIT_LINES,
+  CATEGORY_STYLE,
+  TRAVEL_TYPES,
+  ARRIVAL_RADIUS_KM,
+  STOP_DURATION,
+  INCIDENT_TYPES,
+  AVATARS,
+  CPU_NAMES,
+  CPU_AVATARS,
+  CPU_COLORS,
+  AI_DIFFICULTY,
+  getDashArray,
+  getCitiesWithTransitType,
+  getCategoriesWithTransitType,
+  getActiveIncident,
+  getIncidentDelayMinutes,
+  isIncidentCancellation,
+  INCIDENT_SCOPES,
+} from "./constants.js";
+import {
+  calcFlightArc,
+  fetchBRouterRoute,
+  fetchOSRMDriving,
+  fetchOSRMRoute,
+  fetchAndCacheRoute,
+} from "./utils/routing.js";
+import {
+  calculateDistance,
+  getDist,
+  getNearbyStations,
+  findPath,
+  findMultimodalPath,
+} from "./utils/pathfinding.js";
+import {
+  formatTime,
+  calculateStopInfo,
+  calcLineOffsets,
+} from "./utils/formatting.js";
+
+// Komponenter
+
+import { StaticMiniMap } from './components/StaticMiniMap.jsx';
+import { MiniGame } from "./components/MiniGame.jsx";
 
 // =========================================================================
-// 1. DATA-PROCESSERING (Klargøring af lande, byer og linjer)
+// UI Komponenter
 // =========================================================================
 
-// Henter alle lande fra data-fil
-const allCountries = Object.values(COUNTRY_DATA);
+// Partymode Komponenter
+import { PlayerView } from './modes/race/party/playerview.jsx';
 
-// Samler alle byer i ét stort opslagsværk (CITIES)
-const CITIES = Object.values(COUNTRY_DATA).reduce((acc, country) => {
-  return { ...acc, ...country.cities };
-}, {});
+// Singlescreen Komponenter
+import { SingleScreenLayout } from './modes/race/single/SinglescreenLayout.jsx';
 
-// Samler alle transportlinjer (togskinner, busruter osv.) i én liste
-const TRANSIT_LINES = Object.values(COUNTRY_DATA).reduce((acc, country) => {
-  return [...acc, ...country.lines];
-}, []);
+import { COUNTRY_DATA, countryFlags } from "./data/countries.js"; // Use relative path
+import {
+  JOB_CATEGORIES,
+  JOB_COUNT_BY_SIZE,
+  JOB_REFRESH_INTERVAL,
+  JACKPOT_CHANCE,
+  JACKPOT_EVENTS,
+  getAvailableCategories,
+  generateJobListings,
+  getLevelFromXP,
+  getXPToNextLevel,
+} from "./data/jobs.js";
 
+<<<<<<< Updated upstream
 // --- NY: Samler alle styles ---
 const CATEGORY_STYLE = Object.values(COUNTRY_DATA).reduce((acc, country) => {
   return { ...acc, ...country.styles };
@@ -98,12 +182,15 @@ const STOP_DURATION = 1;
 
 
 
+=======
+>>>>>>> Stashed changes
 
 
 // =========================================================================
 // 4. HJÆLPE-ALGORITMER (Afstand og Rutesøgning)
 // =========================================================================
 
+<<<<<<< Updated upstream
 
 
 
@@ -329,26 +416,29 @@ const calculateStopInfo = (dep, targetStop, startCity) => {
 };
 
 
+=======
+>>>>>>> Stashed changes
 // Finder rette job-pool for en by (tjekker parent, derefter by-navn, ellers default)
 const getJobPoolForCity = (cityName) => {
   const city = CITIES[cityName];
   const lookupName = city?.parent
-  ? city.parent.toLowerCase()
-  : cityName.toLowerCase();
-  return JOB_POOL[lookupName] || JOB_POOL['default'];
+    ? city.parent.toLowerCase()
+    : cityName.toLowerCase();
+  return JOB_POOL[lookupName] || JOB_POOL["default"];
 };
 
 // Trækker N tilfældige jobs fra poolen og tildeler unikke runtime-id'er
 const drawJobs = (cityName, count) => {
   const pool = getJobPoolForCity(cityName);
   const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count).map(job => ({
+  return shuffled.slice(0, count).map((job) => ({
     ...job,
     instanceId: `${job.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-                                              takenBy: null
+    takenBy: null,
   }));
 };
 
+<<<<<<< Updated upstream
 // "Hjernen" der finder den korteste vej fra by til by via togskinner/veje
 const findPath = (startCity, endCity, transportMode) => {
   const adjacency = {};
@@ -458,11 +548,16 @@ const StaticMiniMap = ({ currentCityPos, destinations, color }) => {
   // H-full gør at kortet strækker sig i hele kolonnens højde
   return <div ref={mapRef} className="w-full h-full min-h-[200px] rounded-2xl border border-white/10 z-0 pointer-events-none shadow-inner" />;
 };
+=======
+// Multi-modal pathfinding: finder korteste vej på tværs af alle transporttyper
+// Returnerer array af { from, to, type, lineName } steps
+
+
+>>>>>>> Stashed changes
 
 // =========================================================================
 // 5. HOVEDKOMPONENTEN (App)
 // =========================================================================
-
 
 export default function App() {
   // --- States (Appens hukommelse) ---
@@ -470,16 +565,18 @@ export default function App() {
   const [role, setRole] = useState(null);
   const [selectedCity, setSelectedCity] = useState(null);
   const [gameState, setGameState] = useState(null);
-  const [playerName, setPlayerName] = useState('');
-  const [playerColor, setPlayerColor] = useState('#3b82f6');
+  const [playerName, setPlayerName] = useState("");
+  const [playerColor, setPlayerColor] = useState("#3b82f6");
   const [playerAvatar, setPlayerAvatar] = useState(AVATARS[0]);
-  const [roomCode, setRoomCode] = useState('');
-  const [view, setView] = useState('menu');
+  const [roomCode, setRoomCode] = useState("");
+  const [view, setView] = useState("menu");
   const [leafletReady, setLeafletReady] = useState(false);
   const [interpolatedTime, setInterpolatedTime] = useState(0);
   const [debugOpen, setDebugOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('train');
-  const [playerTab, setPlayerTab] = useState('departures');
+  const [incidentCheckCounter, setIncidentCheckCounter] = useState(0);
+  const [lastIncidentCheck, setLastIncidentCheck] = useState(null);
+  const [activeTab, setActiveTab] = useState("train");
+  const [playerTab, setPlayerTab] = useState("info");
   const [selectedDeparture, setSelectedDeparture] = useState(null);
   const [localTransportMode, setLocalTransportMode] = useState(null); // 'walking', 'taxi' eller null
   const ticketScrollRef = useRef(null);
@@ -491,11 +588,13 @@ export default function App() {
   const [jobMarket, setJobMarket] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobEventChoice, setJobEventChoice] = useState(null);
-  const [jobScreen, setJobScreen] = useState('listing'); // 'listing' | 'detail' | 'working' | 'event' | 'payout'
+  const [jobScreen, setJobScreen] = useState("listing"); // 'listing' | 'detail' | 'working' | 'event' | 'payout'
   const [currentEventIndex, setCurrentEventIndex] = useState(0);
   const [eventResults, setEventResults] = useState([]); // gemmer valg undervejs
   const [jackpotEvent, setJackpotEvent] = useState(null);
   const [showMiniGame, setShowMiniGame] = useState(false);
+  const [gameMode, setGameMode] = useState('party'); // 'party' | 'singlescreen'
+  const [subFilter, setSubFilter] = useState('all'); // 'all', 'highspeed', 'regular', 'metro'
 
   // --- Refs (Hukommelse der ikke genstarter skærmen ved ændring) ---
   const mapRef = useRef(null);
@@ -508,13 +607,9 @@ export default function App() {
   const gameStateRef = useRef(null);
   const lastUpdateRef = useRef({ serverTime: 0, localTime: Date.now() });
 
-
-
-
   // =========================================================================
   // 6. EFFECTS (Ting der sker automatisk i baggrunden)
   // =========================================================================
-
 
   const [showSplash, setShowSplash] = useState(true);
 
@@ -524,30 +619,123 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-
-  const [playerId] = useState(() => {
+const [playerId] = useState(() => {
     // Brug altid et nyt id per React-instans, gem det kun i state
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   });
 
+  const currentPlayer = gameState?.players?.find((p) => p.id === playerId);
 
-  const currentPlayer = gameState?.players?.find(p => p.id === playerId);
+  const spawnDebugIncident = async (forcedScope = null) => {
+    const cur = gameStateRef.current || gameState;
+    if (!cur) return;
+
+    const randomType =
+      INCIDENT_TYPES[Math.floor(Math.random() * INCIDENT_TYPES.length)];
+    const citiesWithType = getCitiesWithTransitType(randomType.type);
+    const categoriesWithType = getCategoriesWithTransitType(randomType.type);
+    if (citiesWithType.length === 0 || categoriesWithType.length === 0) return;
+
+    const scope =
+      forcedScope ||
+      (Math.random() < 0.4 ? INCIDENT_SCOPES.REGION : INCIDENT_SCOPES.CITY);
+    let city = null;
+    let category = null;
+    let messageLocation = null;
+
+    if (scope === INCIDENT_SCOPES.REGION) {
+      category =
+        categoriesWithType[
+          Math.floor(Math.random() * categoriesWithType.length)
+        ];
+      const regionCities = citiesWithType.filter(
+        (name) => CITIES[name]?.category === category,
+      );
+      city = regionCities[Math.floor(Math.random() * regionCities.length)];
+      messageLocation = category.replace(/^[A-Z]{2}_/, "");
+    } else {
+      city = citiesWithType[Math.floor(Math.random() * citiesWithType.length)];
+      category = CITIES[city]?.category || null;
+      messageLocation = city;
+    }
+
+    if (!city) return;
+
+    const severity = 1 + Math.floor(Math.random() * 3);
+    const durationDays = 0.5 + Math.random() * 2.5;
+    const severityLabel =
+      severity === 1
+        ? "Mindre forsinkelse"
+        : severity === 2
+        ? "Stor forsinkelse"
+        : "Aflyst";
+
+    const newIncident = {
+      id: Math.random().toString(36).substr(2, 9),
+      city,
+      category,
+      scope,
+      label: randomType.label,
+      type: randomType.type,
+      severity,
+      severityLabel,
+      startTime: Date.now(),
+      clearTime: Date.now() + durationDays * 24 * 60 * 60 * 1000,
+    };
+
+    const newIncidents = [...(cur.incidents || []), newIncident];
+    const newLogs = [
+      {
+        time: cur.gameTime || 0,
+        message: `DEBUG: ${newIncident.label} (${newIncident.severityLabel}) rammer ${
+          scope === INCIDENT_SCOPES.REGION
+            ? `region ${messageLocation}`
+            : messageLocation
+        }`,
+        type: "incident",
+      },
+      ...(cur.logs || []),
+    ].slice(0, 50);
+
+    const sessionRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "sessions",
+      cur.code || "GLOBAL",
+    );
+
+    await updateDoc(sessionRef, {
+      incidents: newIncidents,
+      logs: newLogs,
+    });
+  };
 
   useEffect(() => {
     if (currentPlayer?.currentJob && !selectedJob) {
       setSelectedJob(currentPlayer.currentJob);
-      setJobScreen('working');
+      setJobScreen("working");
     }
   }, [currentPlayer?.currentJob]);
 
   useEffect(() => {
     if (!selectedJob?.endTime) return;
     if ((gameState?.gameTime ?? 0) < selectedJob.endTime) return;
-    if (jobScreen === 'working' && !showMiniGame) {
+    if (jobScreen === "working" && !showMiniGame) {
       const miniBonus = jobEventChoice?.miniGameBonus ?? 0;
       const totalPay = Math.max(0, (selectedJob.pay ?? 0) + miniBonus);
-      const docId = gameState.code || 'GLOBAL';
-      const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', docId);
+      const docId = gameState.code || "GLOBAL";
+      const sessionRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "sessions",
+        docId,
+      );
 
       // +1 XP i den rigtige kategori
       const category = selectedJob.category;
@@ -560,49 +748,68 @@ export default function App() {
         [category]: { xp: newXP, level: newLevel },
       };
 
-      setDoc(sessionRef, {
-        players: gameState.players.map(p =>
-        p.id === playerId ? {
-          ...p,
-          money: (p.money ?? 0) + totalPay,
-                                       currentJob: null,
-                                       jobLevels: updatedLevels,
-        } : p
-        )
-      }, { merge: true });
+      setDoc(
+        sessionRef,
+        {
+          players: gameState.players.map((p) =>
+            p.id === playerId
+              ? {
+                  ...p,
+                  money: (p.money ?? 0) + totalPay,
+                  currentJob: null,
+                  jobLevels: updatedLevels,
+                }
+              : p,
+          ),
+        },
+        { merge: true },
+      );
 
-      setJobEventChoice(prev => ({ ...(prev ?? {}), totalPay, results: [] }));
-      setJobScreen('payout');
+      setJobEventChoice((prev) => ({ ...(prev ?? {}), totalPay, results: [] }));
+      setJobScreen("payout");
     }
   }, [gameState?.gameTime, selectedJob?.endTime, jobScreen, showMiniGame]);
-
-
 
   // --- A. TIDSSYNKRONISERING ---
   // Denne blok sørger for, at uret tikker jævnt mellem server-opdateringer
 
   useEffect(() => {
     if (gameState?.gameTime !== gameStateRef.current?.gameTime) {
-      lastUpdateRef.current = { serverTime: gameState?.gameTime || 0, localTime: Date.now() };
+      // Only update the reference if the server time is actually newer
+      // This prevents time jumps when Firebase sends out-of-order updates
+      const currentInterpolated = interpolatedTime;
+      const newServerTime = gameState?.gameTime || 0;
+
+      // Allow small backwards jumps (within 1 minute) to handle rounding/network issues
+      // but prevent large jumps back that would cause noticeable time resets
+      if (newServerTime > currentInterpolated - 1) {
+        lastUpdateRef.current = {
+          serverTime: newServerTime,
+          localTime: Date.now(),
+        };
+      }
     }
     gameStateRef.current = gameState;
-  }, [gameState]);
+  }, [gameState, interpolatedTime]);
 
   useEffect(() => {
     // Sætter browserens top-bar farve til sort/slate-950
-    const meta = document.createElement('meta');
+    const meta = document.createElement("meta");
     meta.name = "theme-color";
     meta.content = "#020617"; // Matcher din bg-slate-950
-    document.getElementsByTagName('head')[0].appendChild(meta);
+    document.getElementsByTagName("head")[0].appendChild(meta);
 
     // Bonus: Forhindrer "pull-to-refresh" som ofte laver hvide glimt
-    document.body.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehavior = "none";
   }, []);
-
 
   // --- Effekt: Centrer det aktuelle stop i billetten ---
   useEffect(() => {
-    if (currentPlayer?.isTraveling && ticketScrollRef.current && currentStopRef.current) {
+    if (
+      currentPlayer?.isTraveling &&
+      ticketScrollRef.current &&
+      currentStopRef.current
+    ) {
       const container = ticketScrollRef.current;
       const stopElement = currentStopRef.current;
 
@@ -614,7 +821,7 @@ export default function App() {
       // Scroll containeren så stopElement er i midten
       container.scrollTo({
         left: stopOffsetLeft - containerWidth / 2 + stopWidth / 2,
-        behavior: 'smooth' // Gør bevægelsen flydende
+        behavior: "smooth", // Gør bevægelsen flydende
       });
     }
   }, [interpolatedTime, currentPlayer?.isTraveling, currentPlayer?.segments]);
@@ -624,21 +831,21 @@ export default function App() {
     const city = currentPlayer.currentCity;
     if (!city) return;
 
-    console.log('🏙️ City:', city);
-    console.log('📦 CITIES entry:', CITIES[city]);
-    console.log('🔑 Size:', CITIES[city]?.size);
+    console.log("🏙️ City:", city);
+    console.log("📦 CITIES entry:", CITIES[city]);
+    console.log("🔑 Size:", CITIES[city]?.size);
 
     fetchOrRefreshJobMarket(city, gameState?.gameTime ?? 0)
-    .then(listings => {
-      console.log('📋 Listings hentet:', listings);
-      setJobMarket(listings);
-    })
-    .catch(err => console.error('❌ Fejl:', err));
+      .then((listings) => {
+        console.log("📋 Listings hentet:", listings);
+        setJobMarket(listings);
+      })
+      .catch((err) => console.error("❌ Fejl:", err));
   }, [currentPlayer?.currentCity, currentPlayer?.isTraveling]);
 
   useEffect(() => {
     const updateInterpolation = () => {
-      if (gameState?.status === 'playing' && gameState?.timeSpeed > 0) {
+      if (gameState?.status === "playing" && gameState?.timeSpeed > 0) {
         // Vi tager server-tiden og lægger den tid til, der er gået siden sidst (lokalt)
         const now = Date.now();
         const lastUpdate = lastUpdateRef.current.localTime;
@@ -646,7 +853,8 @@ export default function App() {
 
         // timeSpeed er minutter pr. sekund (f.eks. 0.5)
         const additionalMinutes = elapsedSeconds * gameState.timeSpeed;
-        setInterpolatedTime((gameState.gameTime + additionalMinutes) % 1440);
+        const baseTime = lastUpdateRef.current.serverTime;
+        setInterpolatedTime((baseTime + additionalMinutes) % 1440);
       } else if (gameState) {
         setInterpolatedTime(gameState.gameTime || 420);
       }
@@ -657,65 +865,104 @@ export default function App() {
     return () => cancelAnimationFrame(requestRef.current);
   }, [gameState]);
 
-  const handleLocalTravel = async (targetCityName, mode) => {
-    console.log("Tryk registreret:", targetCityName, mode); // Tjek om denne dukker op i F12
+  
+const handleLocalTravel = async (targetCityName, mode) => {
+  console.log("Tryk registreret:", targetCityName, mode);
 
-    if (!user || !gameState) return;
-    const me = gameState.players.find(p => p.id === playerId);
-    if (!me || me.isTraveling) return;
+  if (!user || !gameState) return;
+  const me = gameState.players.find((p) => p.id === playerId);
+  if (!me || me.isTraveling) return;
 
-    const startPos = CITIES[me.currentCity].pos;
-    const endPos = CITIES[targetCityName].pos;
-    const profile = mode === 'walking' ? 'foot' : 'driving';
+  const startPos = CITIES[me.currentCity].pos;
+  const endPos = CITIES[targetCityName].pos;
 
-    try {
-      const res = await fetch(`https://router.project-osrm.org/route/v1/${profile}/${startPos[1]},${startPos[0]};${endPos[1]},${endPos[0]}?overview=full&geometries=polyline`);
-      const data = await res.json();
+  try {
+    // Brug altid driving-profilen — foot er ikke tilgængelig på den offentlige OSRM-server
+    const res = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${startPos[1]},${startPos[0]};${endPos[1]},${endPos[0]}?overview=full&geometries=polyline`,
+    );
+    const data = await res.json();
 
-      if (data.code !== 'Ok') return alert("Kunne ikke finde vej!");
+    if (data.code !== "Ok") return alert("Kunne ikke finde vej!");
 
-      const route = data.routes[0];
-      const dist = route.distance / 1000;
-      const duration = route.duration / 60;
-      const cost = mode === 'taxi' ? Math.round(50 + dist * 15) : 0;
+    const route = data.routes[0];
+    const dist = route.distance / 1000;
+    const cost = mode === "taxi" ? Math.round(50 + dist * 15) : 0;
 
-      if (me.money < cost) return alert("Ikke nok penge!");
+    // Beregn varighed baseret på transporttype — ikke OSRM's bilvarighed
+    const WALKING_SPEED_KMH = 10;
+    const TAXI_SPEED_KMH = 70;
+    const speed = mode === "walking" ? WALKING_SPEED_KMH : TAXI_SPEED_KMH;
+    const durationMinutes = (dist / speed) * 60;
 
-      // DYNAMISK STI: Vi bruger gameState.code hvis den findes, ellers 'GLOBAL'
-      const docId = gameState.code || 'GLOBAL';
-      const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', docId);
-
-      console.log("Opdaterer Firebase på sti:", docId);
-
-      await setDoc(sessionRef, {
-        players: gameState.players.map(p => p.id === playerId ? {
-          ...p,
-          isTraveling: true,
-          destinationCity: targetCityName,
-          travelType: mode,
-          money: p.money - cost,
-          segments: [{
-            from: me.currentCity,
-            to: targetCityName,
-            departure: gameState.gameTime,
-            arrival: gameState.gameTime + Math.ceil(duration),
-                                       path: route.geometry
-          }]
-        } : p)
-      }, { merge: true });
-
-    } catch (err) {
-      console.error("FEJL I REJSE:", err);
+    const activeIncident = getActiveIncident(gameState.incidents, targetCityName, mode);
+    if (isIncidentCancellation(activeIncident)) {
+      return alert(`Rejsen er aflyst på grund af ${activeIncident.label}.`);
     }
-  };
+    const incidentDelay = getIncidentDelayMinutes(activeIncident);
 
+    if (me.money < cost) return alert("Ikke nok penge!");
+
+    // Decode OSRM encoded polyline til {lat, lng} format
+    const decodedPath = (() => {
+      const str = route.geometry;
+      let index = 0, lat = 0, lng = 0, coords = [];
+      while (index < str.length) {
+        let b, shift = 0, result = 0;
+        do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        lat += (result & 1) ? ~(result >> 1) : result >> 1;
+        shift = 0; result = 0;
+        do { b = str.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        lng += (result & 1) ? ~(result >> 1) : result >> 1;
+        coords.push({ lat: lat / 1e5, lng: lng / 1e5 });
+      }
+      return coords;
+    })();
+
+    const gameMinutes = Math.ceil((durationMinutes + incidentDelay) / (gameState.timeSpeed || 1));
+
+    const docId = gameState.code || "GLOBAL";
+    const sessionRef = doc(db, "artifacts", appId, "public", "data", "sessions", docId);
+
+    await setDoc(
+      sessionRef,
+      {
+        players: gameState.players.map((p) =>
+          p.id === playerId
+            ? {
+                ...p,
+                isTraveling: true,
+                destinationCity: targetCityName,
+                travelType: mode,
+                money: p.money - cost,
+                segments: [
+                  {
+                    from: me.currentCity,
+                    to: targetCityName,
+                    departure: gameState.gameTime,
+                    arrival: gameState.gameTime + gameMinutes,
+                    pathData: JSON.stringify(decodedPath),
+                    lineId: mode,
+                    arrivalRadiusKm: ARRIVAL_RADIUS_KM[mode] ?? 1.5,
+                  },
+                ],
+              }
+            : p,
+        ),
+      },
+      { merge: true },
+    );
+  } catch (err) {
+    console.error("FEJL I REJSE:", err);
+  }
+};
 
   // --- B. LOGIN & INDLÆSNING AF KORT-BIBLIOTEK ---
   // Sørger for at du er logget ind og at "Leaflet" (kortet) er klar til brug
 
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+      if (typeof __initial_auth_token !== "undefined" && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
         await signInAnonymously(auth);
@@ -725,17 +972,18 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, setUser);
 
     if (!window.L) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
       document.head.appendChild(link);
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
       script.async = true;
       script.onload = () => {
         // Load PolylineOffset plugin efter Leaflet er klar
-        const offsetScript = document.createElement('script');
-        offsetScript.src = 'https://cdn.jsdelivr.net/npm/leaflet-polylineoffset@1.1.1/leaflet.polylineoffset.js';
+        const offsetScript = document.createElement("script");
+        offsetScript.src =
+          "https://cdn.jsdelivr.net/npm/leaflet-polylineoffset@1.1.1/leaflet.polylineoffset.js";
         offsetScript.async = true;
         offsetScript.onload = () => setLeafletReady(true);
         document.head.appendChild(offsetScript);
@@ -747,12 +995,14 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-
-
-
   // --- C. KORT-OPBYGNING ---
   useEffect(() => {
-    if (!leafletReady || !mapRef.current || (gameState?.status !== 'playing' && gameState?.status !== 'finished')) return;
+    if (
+      !leafletReady ||
+      !mapRef.current ||
+      (gameState?.status !== "playing" && gameState?.status !== "finished")
+    )
+      return;
     const L = window.L;
     if (!L) return;
 
@@ -760,45 +1010,184 @@ export default function App() {
       // 1. Skab kortet
       mapInstance.current = L.map(mapRef.current, {
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
       }).setView([56.0, 11.0], 7);
 
       const handleZoom = () => {
         const currentZoom = mapInstance.current.getZoom();
         const container = mapRef.current;
         if (!container) return;
+<<<<<<< Updated upstream
 
         // Vi bruger kun 3 tilstande nu: Skjult -> Navn -> Udfoldet
         container.classList.remove('hide-route-labels', 'state-name', 'state-expanded');
 
+=======
+        container.classList.remove(
+          "hide-route-labels",
+          "state-name",
+          "state-expanded",
+        );
+>>>>>>> Stashed changes
         if (currentZoom < 7) {
-          container.classList.add('hide-route-labels');
+          container.classList.add("hide-route-labels");
         } else if (currentZoom >= 7 && currentZoom < 11) {
-          container.classList.add('state-name');
+          container.classList.add("state-name");
         } else {
-          container.classList.add('state-expanded');
+          container.classList.add("state-expanded");
         }
       };
+<<<<<<< Updated upstream
       mapInstance.current.on('zoomend', handleZoom);
       // Slå auto-zoom fra ved manuel interaktion
       mapInstance.current.on('dragstart', () => { setAutoZoom(false); autoZoomRef.current = false; });
       mapInstance.current.on('zoomstart', () => {
+=======
+      mapInstance.current.on("zoomend", handleZoom);
+      mapInstance.current.on("dragstart", () => {
+        setAutoZoom(false);
+        autoZoomRef.current = false;
+      });
+      mapInstance.current.on("zoomstart", () => {
+>>>>>>> Stashed changes
         if (!mapInstance.current._zooming_programmatic) {
-          setAutoZoom(false); autoZoomRef.current = false;
+          setAutoZoom(false);
+          autoZoomRef.current = false;
         }
       });
       // Kør den med det samme for at sætte start-tilstanden
       setTimeout(handleZoom, 100);
 
+<<<<<<< Updated upstream
       // 2. Lag
       nightLayerRef.current = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { zIndex: 1 }).addTo(mapInstance.current);
       dayLayerRef.current = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png', { zIndex: 2, opacity: 1 }).addTo(mapInstance.current);
+=======
+      // 2. Tile-lag
+      nightLayerRef.current = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        { zIndex: 1 },
+      ).addTo(mapInstance.current);
+      dayLayerRef.current = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png",
+        { zIndex: 2, opacity: 1 },
+      ).addTo(mapInstance.current);
+>>>>>>> Stashed changes
 
       // 3. Opsaml data
       const segmentUsage = {};
       const terminusData = {};
 
+<<<<<<< Updated upstream
       // --- 1. TEGN ALLE BYER SOM SMÅ HVIDE PRIKKER ---
+=======
+      // --- LAG 1: BAGGRUNDSNET (tynde ruter, tegnes først så alt andet er ovenpå) ---
+      TRANSIT_LINES.forEach(async (line) => {
+        if (line.type === "flight") return;
+        for (let i = 0; i < line.cities.length - 1; i++) {
+          const fromCity = line.cities[i];
+          const toCity = line.cities[i + 1];
+          const pos1 = CITIES[fromCity]?.pos;
+          const pos2 = CITIES[toCity]?.pos;
+          if (!pos1 || !pos2) continue;
+          let points = [pos1, pos2];
+          try {
+            const key = `${line.type}_${[fromCity, toCity].sort().join("_")}`;
+            const cacheRef = doc(
+              db,
+              "artifacts",
+              appId,
+              "public",
+              "data",
+              "routes",
+              key,
+            );
+            const cached = await getDoc(cacheRef);
+            if (cached.exists()) {
+              points = cached.data().path.map((p) => [p.lat, p.lng]);
+            }
+          } catch {}
+          L.polyline(points, {
+            color: line.color,
+            weight: 1,
+            opacity: 0.35,
+            lineJoin: "round",
+            dashArray: getDashArray(line.type),
+          }).addTo(mapInstance.current);
+        }
+      });
+
+      // --- LAG 2: SMÅ STATIONS-PRIKKER + TERMINUS-DATA ---
+      TRANSIT_LINES.forEach((line) => {
+        if (line.type === "bus" || line.type === "flight") return;
+
+        line.cities.forEach((cityName, index) => {
+          const cityData = CITIES[cityName];
+          if (!cityData) return;
+
+          const isStartOrEnd = index === 0 || index === line.cities.length - 1;
+          const isMajor =
+            isStartOrEnd ||
+            cityData.hub ||
+            cityData.airport ||
+            cityData.ferry ||
+            gameState.goalCity === cityName;
+
+          if (!isMajor) {
+            L.circleMarker(cityData.pos, {
+              radius: 3,
+              fillColor: "#ffffff",
+              color: "#000",
+              weight: 1,
+              fillOpacity: 0.8,
+              interactive: true,
+            })
+              .addTo(mapInstance.current)
+              .bindTooltip(cityName, {
+                direction: "top",
+                className: "small-station-tooltip",
+                offset: [0, -5],
+              });
+          }
+
+          if (isMajor) {
+            if (!terminusData[cityName]) {
+              terminusData[cityName] = {
+                pos: cityData.pos,
+                routes: [],
+                city: cityData,
+              };
+            }
+            const addRouteDirection = (toCity) => {
+              if (!toCity) return;
+              const directionKey = `${line.name}-${toCity}`;
+              if (
+                !terminusData[cityName].routes.find(
+                  (r) => r.key === directionKey,
+                )
+              ) {
+                terminusData[cityName].routes.push({
+                  key: directionKey,
+                  name: line.name,
+                  color: line.color,
+                  to: toCity,
+                });
+              }
+            };
+            if (index === 0) {
+              addRouteDirection(line.cities[line.cities.length - 1]);
+            } else if (index === line.cities.length - 1) {
+              addRouteDirection(line.cities[0]);
+            } else {
+              addRouteDirection(line.cities[0]);
+              addRouteDirection(line.cities[line.cities.length - 1]);
+            }
+          }
+        });
+      });
+
+      // --- LAG 3: ALLE BYER SOM SMÅ HVIDE PRIKKER ---
+>>>>>>> Stashed changes
       Object.entries(CITIES).forEach(([cityName, cityData]) => {
         if (!cityData.pos) return;
         window.L.circleMarker(cityData.pos, {
@@ -807,14 +1196,14 @@ export default function App() {
           color: "#000",
           weight: 0.5,
           fillOpacity: 0.8,
-          interactive: true
+          interactive: true,
         })
-        .addTo(mapInstance.current)
-        .bindTooltip(cityName, {
-          direction: 'top',
-          className: 'small-station-tooltip',
-          offset: [0, -2]
-        });
+          .addTo(mapInstance.current)
+          .bindTooltip(cityName, {
+            direction: "top",
+            className: "small-station-tooltip",
+            offset: [0, -2],
+          });
       });
 
       // --- 2. TEGN MÅLFLAG (🏁) ---
@@ -830,6 +1219,7 @@ export default function App() {
           className: 'animate-pulse'
         }).addTo(mapInstance.current);
 
+<<<<<<< Updated upstream
         // Emoji Flag
         window.L.marker(destPos, {
           icon: window.L.divIcon({
@@ -837,15 +1227,81 @@ export default function App() {
                                  className: 'destination-marker',
                                  iconSize: [24, 24],
                                  iconAnchor: [12, 12]
+=======
+        <!-- Pin form -->
+        <div style="
+        position: relative;
+        width: 44px; height: 52px;
+        background: linear-gradient(145deg, #f5d080, #b8860b);
+        border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        clip-path: polygon(50% 100%, 0% 20%, 100% 20%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 20px rgba(212,175,55,0.6);
+        filter: drop-shadow(0 0 8px rgba(212,175,55,0.8));
+        ">
+        </div>
+
+        <!-- Cirkel med trofæ -->
+        <div style="
+        position: absolute;
+        top: 0;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        background: linear-gradient(145deg, #1a1200, #2d1f00);
+        border: 3px solid #d4af37;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        box-shadow: 0 0 15px rgba(212,175,55,0.5), inset 0 0 10px rgba(0,0,0,0.5);
+        ">🏆</div>
+        </div>
+
+        <style>
+        @keyframes goal-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.6; }
+          50% { transform: scale(1.4); opacity: 1; }
+
+
+
+
+          /* Fjern den hvide Leaflet-standard baggrund og pil */
+          .goal-tooltip::before { display: none; }
+          .leaflet-tooltip.goal-tooltip { box-shadow: 0 0 16px rgba(212,175,55,0.3); }
+        }
+
+
+        </style>
+        `;
+
+        L.marker(destPos, {
+          icon: L.divIcon({
+            html: goalHtml,
+            className: "",
+            iconSize: [30, 50],
+            iconAnchor: [30, 70],
+>>>>>>> Stashed changes
           }),
-          zIndexOffset: 1000
+          zIndexOffset: 1000,
         })
+<<<<<<< Updated upstream
         .addTo(mapInstance.current)
         .bindTooltip(`DIT MÅL: ${currentPlayer.destination}`, {
           permanent: true,
           direction: 'right',
           offset: [12, 0]
         });
+=======
+          .addTo(mapInstance.current)
+          .bindTooltip(`${gameState.goalCity}`, {
+            permanent: true,
+            direction: "top",
+            offset: [0, -75],
+            className: "goal-tooltip",
+          });
+>>>>>>> Stashed changes
       }
 
       TRANSIT_LINES.forEach(line => {
@@ -917,7 +1373,11 @@ export default function App() {
           color: "#0f172a",
           weight: 2,
           fillOpacity: 1,
+<<<<<<< Updated upstream
           className: 'station-marker-pulse' // Her tilføjes animationen
+=======
+          className: "station-marker-pulse",
+>>>>>>> Stashed changes
         }).addTo(mapInstance.current);
 
         // Vi kan også farve selve kanten af prikken med rutens farve for mere effekt
@@ -925,26 +1385,35 @@ export default function App() {
           marker.setStyle({ color: data.routes[0].color });
         }
 
-        marker.on('click', () => {
+        marker.on("click", () => {
           setSelectedCity({
             name: cityName,
             routes: data.routes,
-            city: data.city
+            city: data.city,
           });
         });
       });
     }
-  }, [leafletReady, role, gameState?.status, gameState?.goalCity, setSelectedCity]);
-
+  }, [
+    leafletReady,
+    role,
+    gameState?.status,
+    gameState?.goalCity,
+    setSelectedCity,
+  ]);
 
   const fetchOrRefreshJobMarket = async (cityName, gameTime) => {
     const city = CITIES[cityName];
     const effectiveCityName = city?.parent || cityName;
     const effectiveCity = CITIES[effectiveCityName] ?? city;
-    const size = effectiveCity?.size || 'small';
+    const size = effectiveCity?.size || "small";
     const count = JOB_COUNT_BY_SIZE[size] || 1;
 
-    const ref = doc(db, `artifacts/${appId}/public/data/jobs`, effectiveCityName);
+    const ref = doc(
+      db,
+      `artifacts/${appId}/public/data/jobs`,
+      effectiveCityName,
+    );
     const snap = await getDoc(ref);
 
     if (snap.exists()) {
@@ -959,11 +1428,9 @@ export default function App() {
     return listings;
   };
 
-
   // =========================================================================
   // 6.2 KORT-OPDATERINGER (Hændelser, Dag/Nat og Bevægelse)
   // =========================================================================
-
 
   // --- A. VEJARBEJDE & HÆNDELSER (🚧) ---
   // Holder styr på at tegne og fjerne gule skilte på kortet
@@ -972,71 +1439,87 @@ export default function App() {
     if (!mapInstance.current || !gameState?.incidents) return;
     const L = window.L;
 
-
     // Fjern gamle ikoner der ikke længere er i databasen
 
-    Object.keys(incidentMarkersRef.current).forEach(id => {
-      if (!gameState.incidents.find(inc => inc.id === id)) {
+    Object.keys(incidentMarkersRef.current).forEach((id) => {
+      if (!gameState.incidents.find((inc) => inc.id === id)) {
         mapInstance.current.removeLayer(incidentMarkersRef.current[id]);
         delete incidentMarkersRef.current[id];
       }
     });
 
-
     // Tegn nye ikoner for hændelser
 
-    gameState.incidents.forEach(inc => {
+    gameState.incidents.forEach((inc) => {
       if (!incidentMarkersRef.current[inc.id] && CITIES[inc.city]) {
         const markerHtml = `
         <div style="width:16px; height:16px; display:flex; align-items:center; justify-content:center; color:#ef4444; font-weight:900; font-size:14px; text-shadow:0 0 4px #fff">
         🚧
         </div>
         `;
-        const icon = L.divIcon({ className: 'incident-marker', html: markerHtml, iconSize: [16, 16] });
-        incidentMarkersRef.current[inc.id] = L.marker(CITIES[inc.city].pos, { icon, zIndexOffset: 2000 })
-        .addTo(mapInstance.current)
-        .bindTooltip(`${inc.label} i ${inc.city}`, { direction: 'bottom' });
+        const icon = L.divIcon({
+          className: "incident-marker",
+          html: markerHtml,
+          iconSize: [16, 16],
+        });
+        const incidentLocationLabel =
+          inc.scope === INCIDENT_SCOPES.REGION
+            ? `region ${inc.category?.replace(/^[A-Z]{2}_/, "")}`
+            : inc.city;
+
+        incidentMarkersRef.current[inc.id] = L.marker(CITIES[inc.city].pos, {
+          icon,
+          zIndexOffset: 2000,
+        })
+          .addTo(mapInstance.current)
+          .bindTooltip(`${inc.label} (${inc.severityLabel}) i ${incidentLocationLabel}`, {
+            direction: "bottom",
+          });
       }
     });
   }, [gameState?.incidents]);
 
-
-
   // --- B. DAG/NAT EFFEKT ---
   // Gør kortet mørkere eller lysere baseret på spillets klokkeslæt
-
 
   useEffect(() => {
     if (!dayLayerRef.current) return;
     const hour = interpolatedTime / 60;
 
-
     // En lille formel der regner ud om det er lyst eller mørkt
     // Lyst mellem 07-20, overgang (solopgang/nedgang) i timerne omkring
 
-    let opacity = (hour >= 7 && hour < 20) ? 1 : (hour >= 6 && hour < 7) ? hour - 6 : (hour >= 20 && hour < 21) ? 1 - (hour - 20) : 0;
+    let opacity =
+      hour >= 7 && hour < 20
+        ? 1
+        : hour >= 6 && hour < 7
+          ? hour - 6
+          : hour >= 20 && hour < 21
+            ? 1 - (hour - 20)
+            : 0;
     dayLayerRef.current.setOpacity(opacity);
   }, [interpolatedTime]);
-
 
   // --- C. SPILLER-BEVÆGELSE (Opdateret med JSON-support og flere stop) ---
   useEffect(() => {
     if (!mapInstance.current || !gameState?.players) return;
 
-    gameState.players.forEach(p => {
+    gameState.players.forEach((p) => {
       let pos = CITIES[p.currentCity]?.pos || [50, 10];
 
       // Tjek om spilleren rejser og har rutesegmenter
       if (p.isTraveling && p.segments && p.segments?.length > 0) {
-
         // 1. Find det aktuelle segment baseret på interpolatedTime
-        let currentSeg = p.segments?.find(s =>
-        interpolatedTime >= s.departure && interpolatedTime <= s.arrival
+        let currentSeg = p.segments?.find(
+          (s) =>
+            interpolatedTime >= s.departure && interpolatedTime <= s.arrival,
         );
 
         // 2. Fallback: Hvis vi er ved et stop (mellem to segmenter), find det sidste afsluttede segment
         if (!currentSeg) {
-          const lastFinished = [...p.segments].reverse().find(s => interpolatedTime > s.arrival);
+          const lastFinished = [...p.segments]
+            .reverse()
+            .find((s) => interpolatedTime > s.arrival);
           if (lastFinished) {
             pos = CITIES[lastFinished.to]?.pos;
           } else {
@@ -1044,7 +1527,24 @@ export default function App() {
           }
         } else {
           // 3. Beregn positionen i det aktuelle segment
+<<<<<<< Updated upstream
           const prog = Math.max(0, Math.min(1, (interpolatedTime - currentSeg.departure) / (currentSeg.arrival - currentSeg.departure)));
+=======
+          const linearProg = Math.max(
+            0,
+            Math.min(
+              1,
+              (interpolatedTime - currentSeg.departure) /
+                (currentSeg.arrival - currentSeg.departure),
+            ),
+          );
+
+          // Ease in-out (cubic) — langsom start, hurtig midte, langsom slutning
+          const prog =
+            linearProg < 0.5
+              ? 4 * linearProg * linearProg * linearProg
+              : 1 - Math.pow(-2 * linearProg + 2, 3) / 2;
+>>>>>>> Stashed changes
 
           let finalPath = null;
 
@@ -1053,24 +1553,48 @@ export default function App() {
             try {
               const raw = JSON.parse(currentSeg.pathData);
               // Håndter både gammelt format [[lat,lng]] og nyt format [{lat, lng}]
-              finalPath = raw.map(p => Array.isArray(p) ? p : [p.lat, p.lng]);
+              finalPath = raw.map((p) =>
+                Array.isArray(p) ? p : [p.lat, p.lng],
+              );
             } catch (e) {
               console.error("Kunne ikke parse pathData", e);
             }
           } else if (currentSeg.path) {
             // Hvis det er gemt som råt array (f.eks. ved lokale test eller gamle data)
             const rawPath = currentSeg.path;
-            if (typeof rawPath === 'string') {
+            if (typeof rawPath === "string") {
               // Google Polyline decoding fallback
               const decodePolyline = (str) => {
-                let index = 0, lat = 0, lng = 0, coordinates = [], shift = 0, result = 0, byte = null, lat_change, lng_change;
+                let index = 0,
+                  lat = 0,
+                  lng = 0,
+                  coordinates = [],
+                  shift = 0,
+                  result = 0,
+                  byte = null,
+                  lat_change,
+                  lng_change;
                 while (index < str.length) {
-                  byte = null; shift = 0; result = 0;
-                  do { byte = str.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20);
-                  lat_change = ((result & 1) ? ~(result >> 1) : (result >> 1)); lat += lat_change;
-                  byte = null; shift = 0; result = 0;
-                  do { byte = str.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20);
-                  lng_change = ((result & 1) ? ~(result >> 1) : (result >> 1)); lng += lng_change;
+                  byte = null;
+                  shift = 0;
+                  result = 0;
+                  do {
+                    byte = str.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                  } while (byte >= 0x20);
+                  lat_change = result & 1 ? ~(result >> 1) : result >> 1;
+                  lat += lat_change;
+                  byte = null;
+                  shift = 0;
+                  result = 0;
+                  do {
+                    byte = str.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                  } while (byte >= 0x20);
+                  lng_change = result & 1 ? ~(result >> 1) : result >> 1;
+                  lng += lng_change;
                   coordinates.push([lat / 1e5, lng / 1e5]);
                 }
                 return coordinates;
@@ -1090,7 +1614,9 @@ export default function App() {
               const b = finalPath[i];
               const dLat = b[0] - a[0];
               const dLon = b[1] - a[1];
-              cumDist.push(cumDist[i - 1] + Math.sqrt(dLat * dLat + dLon * dLon));
+              cumDist.push(
+                cumDist[i - 1] + Math.sqrt(dLat * dLat + dLon * dLon),
+              );
             }
             const totalDist = cumDist[cumDist.length - 1];
             const targetDist = prog * totalDist;
@@ -1098,14 +1624,21 @@ export default function App() {
             // Find det segment hvor targetDist befinder sig
             let idx = 0;
             for (let i = 1; i < cumDist.length; i++) {
-              if (cumDist[i] >= targetDist) { idx = i - 1; break; }
+              if (cumDist[i] >= targetDist) {
+                idx = i - 1;
+                break;
+              }
               idx = i - 1;
             }
             const segLen = cumDist[idx + 1] - cumDist[idx];
-            const segmentProg = segLen > 0 ? (targetDist - cumDist[idx]) / segLen : 0;
+            const segmentProg =
+              segLen > 0 ? (targetDist - cumDist[idx]) / segLen : 0;
             const p1 = finalPath[idx];
             const p2 = finalPath[idx + 1] || p1;
-            pos = [p1[0] + (p2[0] - p1[0]) * segmentProg, p1[1] + (p2[1] - p1[1]) * segmentProg];
+            pos = [
+              p1[0] + (p2[0] - p1[0]) * segmentProg,
+              p1[1] + (p2[1] - p1[1]) * segmentProg,
+            ];
           } else {
             // Lineær interpolation hvis ingen sti findes
             const s = CITIES[currentSeg.from]?.pos || pos;
@@ -1116,40 +1649,137 @@ export default function App() {
       }
 
       // Tegn eller opdater markøren på kortet
-      const avatarDisplay = p.avatar || (p.name ? p.name[0].toUpperCase() : '?');
-      const playerColor = p.color || '#3b82f6';
+      const avatarDisplay =
+        p.avatar || (p.name ? p.name[0].toUpperCase() : "?");
+      const playerColor = p.color || "#3b82f6";
 
+<<<<<<< Updated upstream
     const iconHtml = `
     <div style="background: ${playerColor}; width: 30px; height: 30px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; transition: background 0.3s ease;">
     ${avatarDisplay}
     </div>
     `;
+=======
+      const transportEmoji = p.isTraveling
+        ? ({
+            train: "🚂",
+            bus: "🚌",
+            flight: "✈️",
+            ferry: "⛴️",
+            taxi: "🚕",
+            walking: "🚶",
+          }[p.travelType] ?? "🚂")
+        : "";
 
-    if (markersRef.current[p.id]) {
-      markersRef.current[p.id].setLatLng(pos);
-      markersRef.current[p.id].setIcon(window.L.divIcon({ html: iconHtml, className: '', iconSize: [30, 30], iconAnchor: [15, 15] }));
-    } else {
-      markersRef.current[p.id] = window.L.marker(pos, {
-        icon: window.L.divIcon({ html: iconHtml, className: '', iconSize: [30, 30], iconAnchor: [15, 15] })
-      }).addTo(mapInstance.current);
+      const lineId = p.segments?.[0]?.lineId;
+      const lineData = TRANSIT_LINES.find((l) => l.name === lineId);
+      const lineStyle =
+        CATEGORY_STYLE[lineData?.category] ?? CATEGORY_STYLE[lineData?.name];
+      const lineLabel = p.isTraveling
+        ? lineStyle?.label || lineData?.category?.split("_").pop() || ""
+        : "";
+      const lineNumber = p.isTraveling ? lineData?.number || "" : "";
+      const destination = p.isTraveling ? (p.destinationCity ?? "") : "";
+
+      const iconHtml = `
+    <div style="display: flex; align-items: center; gap: 0;">
+
+    <!-- Spiller-cirkel -->
+    <div style="
+    background: ${playerColor};
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; line-height: 1;
+    flex-shrink: 0;
+    position: relative; z-index: 2;
+    ">${avatarDisplay}</div>
+
+    <!-- Pill (kun synlig når spilleren rejser) -->
+    ${
+      p.isTraveling
+        ? `
+      <div style="
+      background: #0f172a;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 0 20px 20px 0;
+      padding: 0 10px 0 14px;
+      margin-left: -8px;
+      height: 28px;
+      display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+      white-space: nowrap;
+      ">
+      <!-- Linje-badge -->
+      <div style="
+      background: ${playerColor};
+      color: white;
+      font-size: 10px; font-weight: 900;
+      padding: 2px 5px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+      display: flex; gap: 4px; align-items: center;
+      ">${lineLabel}${lineNumber ? `<span style="opacity: 0.85;">${lineNumber}</span>` : ""}</div>
+
+      <!-- Destination -->
+      <span style="color: white; font-size: 11px; font-weight: 600; max-width: 100px; overflow: hidden; text-overflow: ellipsis;">
+      mod ${destination}
+      </span>
+
+      <!-- Transport-ikon -->
+      <span style="font-size: 14px;">${transportEmoji}</span>
+      </div>`
+        : ""
     }
+
+      </div>
+      `;
+>>>>>>> Stashed changes
+
+      if (markersRef.current[p.id]) {
+        markersRef.current[p.id].setLatLng(pos);
+        markersRef.current[p.id].setIcon(
+          window.L.divIcon({
+            html: iconHtml,
+            className: "",
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+          }),
+        );
+      } else {
+        markersRef.current[p.id] = window.L.marker(pos, {
+          icon: window.L.divIcon({
+            html: iconHtml,
+            className: "",
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+          }),
+        }).addTo(mapInstance.current);
+      }
     });
   }, [interpolatedTime, gameState?.players]);
 
   // --- D. DYNAMISK AUTO-ZOOM ---
-  useEffect(() => { autoZoomRef.current = autoZoom; }, [autoZoom]);
+  useEffect(() => {
+    autoZoomRef.current = autoZoom;
+  }, [autoZoom]);
 
   useEffect(() => {
-    if (!mapInstance.current || !gameState?.players || !autoZoomRef.current) return;
+    if (!mapInstance.current || !gameState?.players || !autoZoomRef.current)
+      return;
     const L = window.L;
     if (!L) return;
 
-    const positions = gameState.players.map(p => {
-      const marker = markersRef.current[p.id];
-      if (marker) return marker.getLatLng();
-      const cityPos = CITIES[p.currentCity]?.pos;
-      return cityPos ? L.latLng(cityPos) : null;
-    }).filter(Boolean);
+    const positions = gameState.players
+      .map((p) => {
+        const marker = markersRef.current[p.id];
+        if (marker) return marker.getLatLng();
+        const cityPos = CITIES[p.currentCity]?.pos;
+        return cityPos ? L.latLng(cityPos) : null;
+      })
+      .filter(Boolean);
 
     if (positions.length === 0) return;
 
@@ -1160,37 +1790,55 @@ export default function App() {
       mapInstance.current.fitBounds(bounds, {
         paddingTopLeft: [40, 80],
         paddingBottomRight: [40, 40],
-        maxZoom: 10,
+        maxZoom: 16,
         minZoom: 4,
         animate: true,
-        duration: 1.5
+        duration: 1.5,
       });
     }
   }, [interpolatedTime, gameState?.players]);
 
-
   // SIKRER AT SPILLEREN ANKOMMER SELVOM HOST ER LAGGY ELLER OFFLINE
   useEffect(() => {
     // Tilføj et tjek for om gameState overhovedet er klar
-    if (role === 'player' && currentPlayer?.isTraveling && currentPlayer?.segments?.length > 0 && gameState?.status === 'playing') {
-      const finalArrival = currentPlayer.segments[currentPlayer.segments.length - 1].arrival;
+    if (
+      role === "player" &&
+      currentPlayer?.isTraveling &&
+      currentPlayer?.segments?.length > 0 &&
+      gameState?.status === "playing"
+    ) {
+      const finalArrival =
+        currentPlayer.segments[currentPlayer.segments.length - 1].arrival;
 
       // Øg bufferen til 5 minutter, så den ikke trigger ved små lag,
       // og tjek at interpolatedTime faktisk er et validt tal
-      if (typeof interpolatedTime === 'number' && interpolatedTime > finalArrival + 5) {
+      if (
+        typeof interpolatedTime === "number" &&
+        interpolatedTime > finalArrival + 5
+      ) {
         console.log("Host reagerer ikke - afslutter rejse lokalt");
-        const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+        const sessionRef = doc(
+          db,
+          "artifacts",
+          appId,
+          "public",
+          "data",
+          "sessions",
+          gameState.code,
+        );
 
         updateDoc(sessionRef, {
-          players: gameState.players.map(p =>
-          p.id === playerId ? {
-            ...p,
-            isTraveling: false,
-            currentCity: p.destinationCity,
-            segments: null,
-            travelType: null
-          } : p
-          )
+          players: gameState.players.map((p) =>
+            p.id === playerId
+              ? {
+                  ...p,
+                  isTraveling: false,
+                  currentCity: p.destinationCity,
+                  segments: null,
+                  travelType: null,
+                }
+              : p,
+          ),
         });
       }
     }
@@ -1200,25 +1848,25 @@ export default function App() {
   // 6.3 HOST-LOOPET (Spillets "Hjerte" - kører kun for værten)
   // =========================================================================
 
-
   useEffect(() => {
     let tick;
 
     // Vi starter kun uret, hvis man er host, og spillet er i gang
 
-    if (role === 'host' && gameState?.status === 'playing' && (gameState?.timeSpeed || 0) > 0) {
-
+    if (
+      role === "host" &&
+      gameState?.status === "playing" &&
+      (gameState?.timeSpeed || 0) > 0
+    ) {
       tick = setInterval(async () => {
         const cur = gameStateRef.current;
         if (!cur) return;
-
 
         // --- 1. TIDEN GÅR ---
         // Vi lægger tidshastigheden til den nuværende tid (f.eks. 1.2 minutter per sekund)
         // % 1440 sørger for, at uret starter forfra ved midnat
 
-        const nextTime = (cur.gameTime + (cur.timeSpeed * 5)) % 1440;
-
+        const nextTime = (cur.gameTime + cur.timeSpeed * 5) % 1440;
 
         let newIncidents = [...(cur.incidents || [])];
         let newLogs = [...(cur.logs || [])];
@@ -1230,52 +1878,130 @@ export default function App() {
 
         if (oldHour !== newHour) {
           // Fjern hændelser der er udløbet
-          newIncidents = newIncidents.filter(inc => inc.clearTime > Date.now());
-          // 25% chance for at der sker noget nyt hver time (væltet træ, strejke osv.)
-          if (Math.random() < 0.25) {
-            const cityNames = Object.keys(CITIES);
-            const randomCity = cityNames[Math.floor(Math.random() * cityNames.length)];
-            const randomType = INCIDENT_TYPES[Math.floor(Math.random() * INCIDENT_TYPES.length)];
+          newIncidents = newIncidents.filter(
+            (inc) => inc.clearTime > Date.now(),
+          );
 
-            // Hvor længe varer det? (mellem 0.5 og 3 dage)
-            const durationDays = 0.5 + Math.random() * 2.5;
-            const newIncident = {
-              id: Math.random().toString(36).substr(2, 9),
-                         city: randomCity,
-                         label: randomType.label,
-                         type: randomType.type,
-                         startTime: Date.now(),
-                         clearTime: Date.now() + (durationDays * 24 * 60 * 60 * 1000)
-            };
+            const checkChance = 0.25;
+            const roll = Math.random();
+            let incidentSpawned = false;
+            let incidentMessage = `roll=${roll.toFixed(2)} check=${checkChance}`;
 
-            // Tilføj besked til loggen
-            newIncidents.push(newIncident);
-            newLogs.unshift({ time: nextTime, message: `BREAKING: ${newIncident.label} rapporteret i ${newIncident.city}!`, type: 'incident' });
-          }
-        }
+            // 25% chance for at der sker noget nyt hver time (væltet træ, strejke osv.)
+            if (roll < checkChance) {
+              const randomType =
+                INCIDENT_TYPES[Math.floor(Math.random() * INCIDENT_TYPES.length)];
+              const citiesWithType = getCitiesWithTransitType(randomType.type);
+              const categoriesWithType = getCategoriesWithTransitType(randomType.type);
+              if (citiesWithType.length > 0 && categoriesWithType.length > 0) {
+                const scope =
+                  Math.random() < 0.4
+                    ? INCIDENT_SCOPES.REGION
+                    : INCIDENT_SCOPES.CITY;
+                const severity = 1 + Math.floor(Math.random() * 3); // 1..3
 
+                let city = null;
+                let category = null;
+                let messageLocation = null;
 
-        // --- 3. ANKOMST-TJEK (Find dette i dit host-loop) ---
-        const players = cur.players.map(p => {
-          if (p.isTraveling && p.segments && p.segments?.length > 0) {
-            const finalArrival = p.segments?.[p.segments?.length - 1]?.arrival;
+                if (scope === INCIDENT_SCOPES.REGION) {
+                  category =
+                    categoriesWithType[
+                      Math.floor(Math.random() * categoriesWithType.length)
+                    ];
+                  const regionCities = citiesWithType.filter(
+                    (name) => CITIES[name]?.category === category,
+                  );
+                  city =
+                    regionCities[
+                      Math.floor(Math.random() * regionCities.length)
+                    ];
+                  messageLocation = category.replace(/^[A-Z]{2}_/, "");
+                } else {
+                  city =
+                    citiesWithType[
+                      Math.floor(Math.random() * citiesWithType.length)
+                    ];
+                  category = CITIES[city]?.category || null;
+                  messageLocation = city;
+                }
 
-            // FIX: Vi tjekker om spiltiden er nået ELLER passeret ankomst
-            // Vi bruger en buffer på 0.1 for at undgå afrundingsfejl
-            if (nextTime >= (finalArrival - 0.1)) {
-              if (p.destinationCity === cur.goalCity) winnerFound = p;
-              return {
-                ...p,
-                isTraveling: false,
-                currentCity: p.destinationCity,
-                segments: null,
-                travelType: null
-              };
+                // Hvis vi ikke fandt nogen by, så meld det og fortsæt
+                if (city) {
+                  incidentSpawned = true;
+                  const durationDays = 0.5 + Math.random() * 2.5;
+                  const severityLabel =
+                    severity === 1
+                      ? "Mindre forsinkelse"
+                      : severity === 2
+                      ? "Stor forsinkelse"
+                      : "Aflyst";
+                  const newIncident = {
+                    id: Math.random().toString(36).substr(2, 9),
+                    city,
+                    category,
+                    scope,
+                    label: randomType.label,
+                    type: randomType.type,
+                    severity,
+                    severityLabel,
+                    startTime: Date.now(),
+                    clearTime: Date.now() + durationDays * 24 * 60 * 60 * 1000,
+                  };
+
+                  incidentMessage = `spawned ${newIncident.type} ${newIncident.scope} ${messageLocation} severity=${newIncident.severity}`;
+                  newIncidents.push(newIncident);
+                  newLogs.unshift({
+                    time: nextTime,
+                    message: `BREAKING: ${newIncident.label} (${newIncident.severityLabel}) rammer ${
+                      scope === INCIDENT_SCOPES.REGION
+                        ? `region ${messageLocation}`
+                        : messageLocation
+                    }!`,
+                    type: "incident",
+                  });
+                } else {
+                  incidentMessage = `eligible type found but no city for ${randomType.type}`;
+                }
+              } else {
+                incidentMessage = `eligible type ${randomType.type} has no targets`;
+              }
             }
-          }
-          return p;
-        });
 
+            setIncidentCheckCounter((counter) => counter + 1);
+            setLastIncidentCheck({
+              time: nextTime,
+              roll,
+              checkChance,
+              spawned: incidentSpawned,
+              message: incidentMessage,
+            });
+          }
+
+          const players = cur.players.map((p) => {
+            if (p.isTraveling && p.segments && p.segments?.length > 0) {
+              const finalArrival = p.segments?.[p.segments?.length - 1]?.arrival;
+
+              // FIX: Vi tjekker om spiltiden er nået ELLER passeret ankomst
+              // Vi bruger en buffer på 0.1 for at undgå afrundingsfejl
+              if (nextTime >= finalArrival - 0.1) {
+                if (p.destinationCity === cur.goalCity) winnerFound = p;
+                return {
+                  ...p,
+                  isTraveling: false,
+                  currentCity: p.destinationCity,
+                  segments: null,
+                  travelType: null,
+                };
+              }
+            }
+            return p;
+          });
+
+        // Additional win check in case arrival check missed it
+        if (!winnerFound) {
+          winnerFound = players.find(p => !p.isTraveling && p.currentCity === cur.goalCity);
+        }
 
         // --- 4. OPDATER DATABASEN (Send de nye data op) ---
         // Gem kun de 50 nyeste beskeder
@@ -1284,41 +2010,70 @@ export default function App() {
           players,
           incidents: newIncidents,
           logs: newLogs.slice(0, 50),
-                         lastUpdateWallTime: Date.now() // Fortæller de andre spillere, hvornår uret sidst blev sat
+          lastUpdateWallTime: Date.now(), // Fortæller de andre spillere, hvornår uret sidst blev sat
         };
 
         // Hvis der er en vinder, stopper vi spillet her
         if (winnerFound) {
-          updatePayload.status = 'finished';
+          updatePayload.status = "finished";
           updatePayload.winner = winnerFound;
         }
 
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', cur.code), updatePayload);
+        await updateDoc(
+          doc(db, "artifacts", appId, "public", "data", "sessions", cur.code),
+          updatePayload,
+        );
 
+<<<<<<< Updated upstream
       },  5000); // Vi opdaterer kun serveren hvert 5. sekund for at spare kvote
+=======
+        // Kør AI-beslutning for CPU-spillere der venter (~30% chance per tick)
+        const waitingAI = (updatePayload.players || cur.players).filter(
+          (p) => p.isAI && !p.isTraveling,
+        );
+        if (waitingAI.length > 0 && Math.random() < 0.3) {
+          await runAITick({ ...cur, ...updatePayload });
+        }
+      }, 5000); // Vi opdaterer kun serveren hvert 5. sekund for at spare kvote
+>>>>>>> Stashed changes
     }
     return () => clearInterval(tick); // Stop uret hvis komponenten lukker
-
   }, [role, gameState?.status, gameState?.timeSpeed]);
-
-
-
 
   // =========================================================================
   // 7. SPIL-LOGIK (Start, Join, Rejs)
   // =========================================================================
 
-
   const startHost = async () => {
     const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code), {
-      code, status: 'lobby', players: [], gameTime: 420, timeSpeed: 0.5, hostId: user.uid, incidents: [], logs: []
-    });
-    setRoomCode(code); setRole('host'); listen(code);
+    await setDoc(
+      doc(db, "artifacts", appId, "public", "data", "sessions", code),
+      {
+        code,
+        status: "lobby",
+        players: [],
+        gameTime: 420,
+        timeSpeed: 0.5,
+        hostId: user.uid,
+        incidents: [],
+        logs: [],
+      },
+    );
+    setRoomCode(code);
+    setRole("host");
+    listen(code);
   };
 
   const startJoin = async () => {
-    const ref = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', roomCode);
+    const ref = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "sessions",
+      roomCode,
+    );
 
     try {
       const snap = await getDoc(ref);
@@ -1333,7 +2088,7 @@ export default function App() {
 
       console.log("Eksisterende spillere FØR join:", existingPlayers);
 
-      const alreadyJoined = existingPlayers.find(p => p.id === playerId);
+      const alreadyJoined = existingPlayers.find((p) => p.id === playerId);
 
       if (!alreadyJoined) {
         const newPlayer = {
@@ -1358,10 +2113,9 @@ export default function App() {
         console.log("Spiller allerede i session");
       }
 
-      setRole('player');
-      setView('menu');
+      setRole("player");
+      setView("menu");
       listen(roomCode);
-
     } catch (err) {
       console.error("JOIN FEJL:", err);
       alert("Fejl ved join: " + err.message);
@@ -1374,52 +2128,253 @@ export default function App() {
     const cities = Object.keys(CITIES);
     const startCity = cities[Math.floor(Math.random() * cities.length)];
     let goalCity = cities[Math.floor(Math.random() * cities.length)];
-    while (goalCity === startCity) goalCity = cities[Math.floor(Math.random() * cities.length)];
+    while (goalCity === startCity)
+      goalCity = cities[Math.floor(Math.random() * cities.length)];
 
     // Her sørger vi for at bevare alle spiller-egenskaber (inkl. farve og avatar)
-    const players = gameState.players.map(p => ({
+    const players = gameState.players.map((p) => ({
       ...p,
-      currentCity: startCity
+      currentCity: startCity,
     }));
 
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code), {
-      status: 'playing',
-      players,
-      startCity,
-      goalCity,
-      logs: [{
-        time: gameState.gameTime || 420,
-        message: `Løbet starter! Find vej til ${goalCity}.`,
-        type: 'info'
-      }]
-    });
+    await updateDoc(
+      doc(db, "artifacts", appId, "public", "data", "sessions", gameState.code),
+      {
+        status: "playing",
+        players,
+        startCity,
+        goalCity,
+        logs: [
+          {
+            time: gameState.gameTime || 420,
+            message: `Løbet starter! Find vej til ${goalCity}.`,
+            type: "info",
+          },
+        ],
+      },
+    );
   };
 
+<<<<<<< Updated upstream
+=======
+const runAITick = async (cur) => {
+  if (!cur || cur.status !== "playing") return;
+
+  const sessionRef = doc(db, "artifacts", appId, "public", "data", "sessions", cur.code);
+  let anyUpdated = false;
+
+  const newPlayers = await Promise.all(
+    cur.players.map(async (p) => {
+      if (!p.isAI || p.isTraveling) return p;
+
+      // Vent hvis AI'en venter på næste afgang
+      if (p.waitingUntil && cur.gameTime < p.waitingUntil) return p;
+
+      const goalPos = CITIES[cur.goalCity]?.pos;
+      const currentPos = CITIES[p.currentCity]?.pos;
+      if (!goalPos || !currentPos) return p;
+
+      // ── Byg kandidatliste ────────────────────────────────────────────────────
+      const candidates = [];
+
+      // 1. Tog/bus/færge via TRANSIT_LINES
+      TRANSIT_LINES.forEach((line) => {
+        const idx = line.cities.indexOf(p.currentCity);
+        if (idx === -1) return;
+        const allNeighbours = [
+          ...line.cities.slice(0, idx),
+          ...line.cities.slice(idx + 1),
+        ];
+        allNeighbours.forEach((city) => {
+          if (!CITIES[city]) return;
+          const pos2 = CITIES[city].pos;
+          const config = TRAVEL_TYPES[line.type] || TRAVEL_TYPES.train;
+          const dist = getDist(currentPos, pos2);
+          const routeFactor = line.type === 'flight' ? 1.0
+            : line.type === 'ferry' ? 1.1
+            : 1.4; // tog og bus følger skinner/veje
+          const duration = (dist * routeFactor / config.speed) * 60;
+          const cost = Math.round(config.baseCost + dist * config.costPerKm);
+          candidates.push({ dest: city, type: line.type, lineName: line.name, cost, duration, line });
+        });
+      });
+
+      // 2. Lokal transport: gang og taxa til nabobyer inden for 50 km
+      const nearby = getNearbyStations(p.currentCity);
+      nearby.forEach(({ name: city, pos }) => {
+        const dist = getDist(currentPos, pos);
+        if (dist <= 8) {
+          const walkDuration = (dist * 1.3 / 5) * 60;
+          candidates.push({ dest: city, type: "walking", lineName: "WALK", cost: 0, duration: walkDuration, line: null });
+        }
+        if (dist <= 30) {
+          const taxiCost = Math.round(50 + dist * 15);
+          const taxiDuration = (dist * 1.3 / 40) * 60;
+          candidates.push({ dest: city, type: "taxi", lineName: "TAXI", cost: taxiCost, duration: taxiDuration, line: null });
+        }
+      });
+
+      if (candidates.length === 0) return p;
+
+      // ── Filtrer ───────────────────────────────────────────────────────────────
+      const affordable = candidates.filter((c) => p.money >= c.cost);
+      if (affordable.length === 0) return p;
+
+      const nonCanceled = affordable.filter(
+        (c) => !isIncidentCancellation(getActiveIncident(cur.incidents, c.dest, c.type)),
+      );
+      if (nonCanceled.length === 0) return p;
+
+      const notBacktrack = nonCanceled.filter((c) => c.dest !== p.lastCity);
+      const pool = notBacktrack.length > 0 ? notBacktrack : nonCanceled;
+
+      // ── Vælg destination ──────────────────────────────────────────────────────
+      let chosen;
+
+      // Hvis målbyen er direkte tilgængelig — tag den altid uanset sværhedsgrad
+      const directToGoal = pool.find((c) => c.dest === cur.goalCity);
+      if (directToGoal) {
+        chosen = directToGoal;
+
+      } else if (p.aiDifficulty === "easy") {
+        chosen = pool[Math.floor(Math.random() * pool.length)];
+
+      } else {
+        const plan = findMultimodalPath(p.currentCity, cur.goalCity);
+        const nextStep = plan?.[0];
+
+        if (nextStep) {
+          const match =
+            pool.find((c) => c.dest === nextStep.to && c.type === nextStep.type) ??
+            pool.find((c) => c.dest === nextStep.to) ??
+            null;
+
+          if (match) {
+            const followPlan = Math.random() > (p.aiDifficulty === "hard" ? 0.05 : 0.25);
+            chosen = followPlan ? match : pool[Math.floor(Math.random() * pool.length)];
+          } else {
+            chosen = pool.reduce((best, c) => {
+              const jitter = (Math.random() - 0.5) * 100;
+              const d = getDist(CITIES[c.dest]?.pos, goalPos) + jitter;
+              return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
+            });
+          }
+        } else {
+          chosen = pool.reduce((best, c) => {
+            const jitter = (Math.random() - 0.5) * 100;
+            const d = getDist(CITIES[c.dest]?.pos, goalPos) + jitter;
+            return d < getDist(CITIES[best.dest]?.pos, goalPos) ? c : best;
+          });
+        }
+      }
+
+      if (!chosen) return p;
+
+      // ── Beregn næste afgang (ventetid som rigtige spillere) ───────────────────
+      let departureTime = cur.gameTime;
+      if (chosen.line?.frequency) {
+        const gap = 1440 / chosen.line.frequency;
+        const firstDep = chosen.line.firstDeparture || 0;
+        let nextDep = firstDep;
+        while (nextDep < cur.gameTime) nextDep += gap;
+        departureTime = nextDep;
+      }
+
+      // Hvis næste afgang er mere end 2 minutter ude i fremtiden — vent
+      if (departureTime > cur.gameTime + 2) {
+        return { ...p, waitingUntil: departureTime };
+      }
+
+      // ── Hent rigtig rute fra cache/API ────────────────────────────────────────
+      const destPos = CITIES[chosen.dest]?.pos;
+      if (!destPos) return p;
+
+      let path;
+      try {
+        path = await fetchAndCacheRoute(p.currentCity, chosen.dest, chosen.type, currentPos, destPos);
+      } catch {
+        path = [currentPos, destPos];
+      }
+
+      const dist = getDist(currentPos, destPos);
+      const config = TRAVEL_TYPES[chosen.type] || TRAVEL_TYPES.train;
+      const routeFactor = chosen.type === 'flight' ? 1.0
+        : chosen.type === 'ferry' ? 1.1
+        : chosen.type === 'walking' || chosen.type === 'taxi' ? 1.3
+        : 1.4;
+      const duration = (dist * routeFactor / config.speed) * 60;
+
+      const activeIncident = getActiveIncident(cur.incidents, chosen.dest, chosen.type);
+      if (isIncidentCancellation(activeIncident)) return p;
+      const incidentDelay = getIncidentDelayMinutes(activeIncident);
+
+      anyUpdated = true;
+      return {
+        ...p,
+        isTraveling: true,
+        waitingUntil: null,
+        destinationCity: chosen.dest,
+        travelType: chosen.type,
+        lastCity: p.currentCity,
+        money: p.money - chosen.cost,
+        segments: [{
+          from: p.currentCity,
+          to: chosen.dest,
+          departure: departureTime,
+          arrival: departureTime + duration + incidentDelay,
+          pathData: JSON.stringify(path.map((pt) => ({ lat: pt[0], lng: pt[1] }))),
+          lineId: String(chosen.lineName || chosen.type),
+          arrivalRadiusKm: ARRIVAL_RADIUS_KM[chosen.type] ?? 1.5,
+        }],
+        history: [
+          ...(p.history || []),
+          {
+            type: chosen.type,
+            from: p.currentCity,
+            to: chosen.dest,
+            line: chosen.lineName || chosen.type,
+            time: cur.gameTime,
+          },
+        ],
+      };
+    }),
+  );
+
+  if (anyUpdated) {
+    await updateDoc(sessionRef, { players: newPlayers });
+  }
+};
+
+>>>>>>> Stashed changes
   const listen = (code) => {
     // Hvis der allerede er en lytter, så stop den først
     if (window.unsubscribeGame) window.unsubscribeGame();
 
-    const unsub = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'sessions', code), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setGameState(data);
-      }
-    }, (error) => {
-      if (error.code === 'resource-exhausted') {
-        console.error("Firebase kvote er brugt op!");
-      }
-    });
+    const unsub = onSnapshot(
+      doc(db, "artifacts", appId, "public", "data", "sessions", code),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setGameState(data);
+        }
+      },
+      (error) => {
+        if (error.code === "resource-exhausted") {
+          console.error("Firebase kvote er brugt op!");
+        }
+      },
+    );
 
     window.unsubscribeGame = unsub;
     return unsub;
   };
 
   const travel = async (dep) => {
-    const me = gameState.players.find(p => p.id === playerId);
+    const me = gameState.players.find((p) => p.id === playerId);
     if (!me || me.isTraveling || me.money < dep.cost) return;
 
     const segments = [];
-    let startTime = dep.time;
+   let startTime = dep.actualTime ?? dep.time;
 
     // Byg segmenter og hent ruter dynamisk for hvert stop-par
     for (let i = 0; i < dep.route.length - 1; i++) {
@@ -1430,51 +2385,79 @@ export default function App() {
       if (!pos1 || !pos2) continue;
 
       // Hent ruten (fra cache eller API)
-      const path = await fetchAndCacheRoute(fromCity, toCity, dep.type, pos1, pos2);
+      const path = await fetchAndCacheRoute(
+        fromCity,
+        toCity,
+        dep.type,
+        pos1,
+        pos2,
+      );
 
       const dist = getDist(pos1, pos2);
       const config = TRAVEL_TYPES[dep.type] || TRAVEL_TYPES.train;
       const duration = (dist / config.speed) * 60;
 
+      const activeIncident = getActiveIncident(
+        gameState.incidents,
+        toCity,
+        dep.type,
+      );
+      if (isIncidentCancellation(activeIncident)) {
+        return alert(
+          `Rejsen til ${toCity} er desværre aflyst på grund af ${activeIncident.label}.`,
+        );
+      }
+
+      const incidentDelay = getIncidentDelayMinutes(activeIncident);
+
       segments.push({
         from: fromCity,
         to: toCity,
         departure: Number(startTime),
-                    arrival: Number(startTime + duration),
-                    pathData: JSON.stringify(path.map(p => ({ lat: p[0], lng: p[1] }))),
-                    lineId: String(dep.lineName || dep.type || 'transit'),
-                    arrivalRadiusKm: ARRIVAL_RADIUS_KM[dep.type] || 1.0,
+        arrival: Number(startTime + duration + incidentDelay),
+        pathData: JSON.stringify(path.map((p) => ({ lat: p[0], lng: p[1] }))),
+        lineId: String(dep.lineName || dep.type || "transit"),
+        arrivalRadiusKm: ARRIVAL_RADIUS_KM[dep.type] || 1.0,
       });
 
-      startTime += duration + STOP_DURATION;
+      startTime += duration + incidentDelay + STOP_DURATION;
     }
 
     try {
-      const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+      const sessionRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "sessions",
+        gameState.code,
+      );
 
       const newHistoryItem = {
-        type: dep.type || 'train',
+        type: dep.type || "train",
         from: me.currentCity,
         to: dep.destination,
         line: dep.lineName || dep.type,
-        time: Number(gameState.gameTime)
+        time: Number(gameState.gameTime),
       };
 
-      const updatedPlayers = gameState.players.map(p =>
-      p.id === playerId ? {
-        ...p,
-        isTraveling: true,
-        destinationCity: dep.destination,
-        segments,
-        money: Number(p.money - dep.cost),
-                                                   lastTicketPrice: Number(dep.cost),
-                                                   travelType: dep.type,
-                                                   history: [...(p.history || []), newHistoryItem]
-      } : p
+      const updatedPlayers = gameState.players.map((p) =>
+        p.id === playerId
+          ? {
+              ...p,
+              isTraveling: true,
+              destinationCity: dep.destination,
+              segments,
+              money: Number(p.money - dep.cost),
+              lastTicketPrice: Number(dep.cost),
+              travelType: dep.type,
+              history: [...(p.history || []), newHistoryItem],
+            }
+          : p,
       );
 
       await updateDoc(sessionRef, { players: updatedPlayers });
-
     } catch (error) {
       console.error("KRITISK FEJL i travel:", error);
     }
@@ -1483,57 +2466,37 @@ export default function App() {
   const handleStepOffNextStation = async () => {
     if (!currentPlayer || !currentPlayer.segments) return;
     // Find det nuværende eller næste segment
-    const currentSegIdx = currentPlayer.segments?.findIndex(s => interpolatedTime <= s.arrival);
+    const currentSegIdx = currentPlayer.segments?.findIndex(
+      (s) => interpolatedTime <= s.arrival,
+    );
     if (currentSegIdx === -1) return;
 
     // Afkort rejsen til at slutte ved næste stop
     const newSegments = currentPlayer.segments?.slice(0, currentSegIdx + 1);
     const nextCity = newSegments[currentSegIdx].to;
 
-    const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', gameState.code);
+    const sessionRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "sessions",
+      gameState.code,
+    );
     await updateDoc(sessionRef, {
-      players: gameState.players.map(p => p.id === playerId ? {
-        ...p,
-        destinationCity: nextCity,
-        segments: newSegments
-      } : p)
+      players: gameState.players.map((p) =>
+        p.id === playerId
+          ? {
+              ...p,
+              destinationCity: nextCity,
+              segments: newSegments,
+            }
+          : p,
+      ),
     });
   };
 
-  // Beregner hvilke segmenter der deles af flere linjer og tildeler offset
-  const calcLineOffsets = (cityName) => {
-    const segmentLines = {}; // segmentKey → [linje1, linje2, ...]
-
-    TRANSIT_LINES.filter(l => l.type !== 'flight' && l.cities.includes(cityName))
-    .forEach(line => {
-      const cityIndex = line.cities.indexOf(cityName);
-      const allCities = line.cities;
-
-      // Alle segmenter på hele linjen (ikke kun fra byen)
-      for (let i = 0; i < allCities.length - 1; i++) {
-        const key = [allCities[i], allCities[i+1]].sort().join('__');
-        if (!segmentLines[key]) segmentLines[key] = [];
-        if (!segmentLines[key].find(l => l.name === line.name)) {
-          segmentLines[key].push(line);
-        }
-      }
-    });
-
-    // For hvert segment: fordel offset symmetrisk
-    // 1 linje → offset 0, 2 linjer → -4 og +4, 3 linjer → -4, 0, +4 osv.
-    const OFFSET_STEP = 4; // pixels mellem linjer
-    const segmentOffsets = {}; // `${segmentKey}__${lineName}` → offset i pixels
-
-    Object.entries(segmentLines).forEach(([segKey, lines]) => {
-      const count = lines.length;
-      const start = -((count - 1) / 2) * OFFSET_STEP;
-      lines.forEach((line, i) => {
-        segmentOffsets[`${segKey}__${line.name}`] = start + i * OFFSET_STEP;
-      });
-    });
-
-    return segmentOffsets;
-  };
 
   const drawnRouteLayers = useRef([]);
 
@@ -1542,8 +2505,8 @@ export default function App() {
     const L = window.L;
     if (!cityName) return;
 
-    const relevantLines = TRANSIT_LINES.filter(line =>
-    line.type !== 'flight' && line.cities.includes(cityName)
+    const relevantLines = TRANSIT_LINES.filter(
+      (line) => line.type !== "flight" && line.cities.includes(cityName),
     );
 
     const segmentOffsets = calcLineOffsets(cityName);
@@ -1561,7 +2524,7 @@ export default function App() {
         segmentsToShow.push([line.cities[i], line.cities[i - 1], line]);
 
       for (const seg of segmentsToShow) {
-        const segKey = [seg[0], seg[1]].sort().join('_');
+        const segKey = [seg[0], seg[1]].sort().join("_");
         if (drawnSegments.has(segKey)) continue;
         drawnSegments.add(segKey);
         allSegments.push([seg[0], seg[1], seg[2]]);
@@ -1569,44 +2532,88 @@ export default function App() {
     }
 
     // Hent alle ruter parallelt
-    const resolvedSegments = await Promise.all(allSegments.map(async ([fromCity, toCity, line]) => {
-      const pos1 = CITIES[fromCity]?.pos;
-      const pos2 = CITIES[toCity]?.pos;
-      if (!pos1 || !pos2) return null;
+    const resolvedSegments = await Promise.all(
+      allSegments.map(async ([fromCity, toCity, line]) => {
+        const pos1 = CITIES[fromCity]?.pos;
+        const pos2 = CITIES[toCity]?.pos;
+        if (!pos1 || !pos2) return null;
 
-      let points = [pos1, pos2];
-      try {
-        const key = `${line.type}_${[fromCity, toCity].sort().join('_')}`;
-        const cacheRef = doc(db, 'artifacts', appId, 'public', 'data', 'routes', key);
-        const cached = await getDoc(cacheRef);
-        if (cached.exists()) {
-          const path = cached.data().path.map(p => [p.lat, p.lng]);
-          const firstPoint = path[0];
-          const distToStart = Math.abs(firstPoint[0] - pos1[0]) + Math.abs(firstPoint[1] - pos1[1]);
-          const distToEnd = Math.abs(firstPoint[0] - pos2[0]) + Math.abs(firstPoint[1] - pos2[1]);
-          points = distToEnd < distToStart ? [...path].reverse() : path;
-        } else if (line.type === 'train') {
-          const result = await fetchBRouterRoute(pos1, pos2);
-          if (result?.path) {
-            points = result.path;
-            const pathForFirebase = points.map(p => ({ lat: p[0], lng: p[1] }));
-            setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() }).catch(() => {});
+        let points = [pos1, pos2];
+        try {
+          const key = `${line.type}_${[fromCity, toCity].sort().join("_")}`;
+          const cacheRef = doc(
+            db,
+            "artifacts",
+            appId,
+            "public",
+            "data",
+            "routes",
+            key,
+          );
+          const cached = await getDoc(cacheRef);
+          if (cached.exists()) {
+            const path = cached.data().path.map((p) => [p.lat, p.lng]);
+            const firstPoint = path[0];
+            const distToStart =
+              Math.abs(firstPoint[0] - pos1[0]) +
+              Math.abs(firstPoint[1] - pos1[1]);
+            const distToEnd =
+              Math.abs(firstPoint[0] - pos2[0]) +
+              Math.abs(firstPoint[1] - pos2[1]);
+            points = distToEnd < distToStart ? [...path].reverse() : path;
+          } else if (line.type === "train") {
+            const result = await fetchBRouterRoute(pos1, pos2);
+            if (result?.path) {
+              points = result.path;
+              const pathForFirebase = points.map((p) => ({
+                lat: p[0],
+                lng: p[1],
+              }));
+              setDoc(cacheRef, {
+                path: pathForFirebase,
+                cachedAt: Date.now(),
+              }).catch(() => {});
+            }
+          } else if (line.type === "bus") {
+            const result = await fetchOSRMDriving(pos1, pos2, "driving");
+            if (result?.path) {
+              points = result.path;
+              const pathForFirebase = points.map((p) => ({
+                lat: p[0],
+                lng: p[1],
+              }));
+              setDoc(cacheRef, {
+                path: pathForFirebase,
+                cachedAt: Date.now(),
+              }).catch(() => {});
+            }
+          } else if (line.type === "ferry") {
+            const result = await fetchOSRMDriving(pos1, pos2, "driving");
+            if (result?.path) points = result.path;
           }
+<<<<<<< Updated upstream
         } else if (line.type === 'ferry') {
           const result = await fetchOSRMDriving(pos1, pos2, 'driving');
           if (result?.path) points = result.path;
         }
       } catch { }
+=======
+        } catch {}
+>>>>>>> Stashed changes
 
-      return { points, line, fromCity, toCity };
-    }));
+        return { points, line, fromCity, toCity };
+      }),
+    );
 
     // Tegn alle på én gang og tilføj animation
-    resolvedSegments.filter(Boolean).forEach(({ points, line, fromCity, toCity }) => {
-      const segKey = [fromCity, toCity].sort().join('__');
-      const offsetKey = `${segKey}__${line.name}`;
-      const offset = segmentOffsets[offsetKey] ?? 0;
+    resolvedSegments
+      .filter(Boolean)
+      .forEach(({ points, line, fromCity, toCity }) => {
+        const segKey = [fromCity, toCity].sort().join("__");
+        const offsetKey = `${segKey}__${line.name}`;
+        const offset = segmentOffsets[offsetKey] ?? 0;
 
+<<<<<<< Updated upstream
       const bgLayer = L.polyline(points, {
         color: line.color,
         weight: 5,
@@ -1622,124 +2629,254 @@ export default function App() {
         lineJoin: 'round',
         offset,
       }).addTo(mapInstance.current);
+=======
+        const bgLayer = L.polyline(points, {
+          color: line.color,
+          weight: 5,
+          opacity: 0.2,
+          lineJoin: "round",
+          dashArray: getDashArray(line.type),
+        }).addTo(mapInstance.current);
 
-      const pathEl = animLayer.getElement();
-      if (pathEl) {
-        const length = pathEl.getTotalLength?.() ?? 2000;
-        pathEl.style.strokeDasharray = length;
-        pathEl.style.strokeDashoffset = length;
-        pathEl.style.transition = 'stroke-dashoffset 1.2s ease-out';
-        setTimeout(() => { pathEl.style.strokeDashoffset = '0'; }, 50);
-      }
+        const animLayer = L.polyline(points, {
+          color: line.color,
+          weight: 3,
+          opacity: 0.9,
+          lineJoin: "round",
+          dashArray: getDashArray(line.type),
+        }).addTo(mapInstance.current);
+>>>>>>> Stashed changes
 
-      drawnRouteLayers.current.push(bgLayer, animLayer);
-    });
+        const pathEl = animLayer.getElement();
+        if (pathEl) {
+          const length = pathEl.getTotalLength?.() ?? 2000;
+          pathEl.style.strokeDasharray = length;
+          pathEl.style.strokeDashoffset = length;
+          pathEl.style.transition = "stroke-dashoffset 1.2s ease-out";
+          setTimeout(() => {
+            pathEl.style.strokeDashoffset = "0";
+          }, 50);
+        }
+
+        drawnRouteLayers.current.push(bgLayer, animLayer);
+      });
   };
 
-
-
-  const drawnForCities = useRef('');
+  const drawnForCities = useRef("");
 
   useEffect(() => {
     if (!leafletReady) return;
-    if (gameState?.status !== 'playing') return;
+    if (gameState?.status !== "playing") return;
 
-    const activeCities = [...new Set(
-      (gameState?.players ?? [])
-      .filter(p => !p.isTraveling && p.currentCity)
-      .map(p => p.currentCity)
-    )].sort();
+    const activeCities = [
+      ...new Set(
+        (gameState?.players ?? [])
+          .filter((p) => !p.isTraveling && p.currentCity)
+          .map((p) => p.currentCity),
+      ),
+    ].sort();
 
     // Kun tegn hvis byerne faktisk har ændret sig
-    const citiesKey = activeCities.join(',');
+    const citiesKey = activeCities.join(",");
     if (citiesKey === drawnForCities.current) return;
     drawnForCities.current = citiesKey;
 
     // Ryd gamle lag og tegn fra alle aktive byer
-    drawnRouteLayers.current.forEach(layer => mapInstance.current?.removeLayer(layer));
+    drawnRouteLayers.current.forEach((layer) =>
+      mapInstance.current?.removeLayer(layer),
+    );
     drawnRouteLayers.current = [];
     activeCities.forEach((city, index) => drawRoutesFromCity(city, false));
-
   }, [
     leafletReady,
     gameState?.status,
-    gameState?.players?.map(p => `${p.id}:${p.currentCity}:${p.isTraveling}`).join(',')
+    gameState?.players
+      ?.map((p) => `${p.id}:${p.currentCity}:${p.isTraveling}`)
+      .join(","),
   ]);
-
 
   const handleTakeJob = async (job, choice = null) => {
     const city = CITIES[currentPlayer.currentCity];
     const effectiveCityName = city?.parent || currentPlayer.currentCity;
-    const cityRef = doc(db, `artifacts/${appId}/public/data/jobs`, effectiveCityName);
-    const docId = gameState.code || 'GLOBAL';
-    const sessionRef = doc(db, 'artifacts', appId, 'public', 'data', 'sessions', docId);
+    const cityRef = doc(
+      db,
+      `artifacts/${appId}/public/data/jobs`,
+      effectiveCityName,
+    );
+    const docId = gameState.code || "GLOBAL";
+    const sessionRef = doc(
+      db,
+      "artifacts",
+      appId,
+      "public",
+      "data",
+      "sessions",
+      docId,
+    );
 
     if (!choice) {
       const snap = await getDoc(cityRef);
       const listings = snap.data()?.listings || [];
-      const updated = listings.map(l =>
-      l.instanceId === job.instanceId ? { ...l, takenBy: playerId } : l
+      const updated = listings.map((l) =>
+        l.instanceId === job.instanceId ? { ...l, takenBy: playerId } : l,
       );
       await setDoc(cityRef, { listings: updated }, { merge: true });
       setJobMarket(updated);
 
-      const endTime = (gameState?.gameTime ?? 0) + (job.durationHours * 60);
+      const endTime = (gameState?.gameTime ?? 0) + job.durationHours * 60;
       const jobWithEndTime = { ...job, endTime };
 
-      await setDoc(sessionRef, {
-        players: gameState.players.map(p =>
-        p.id === playerId ? { ...p, currentJob: jobWithEndTime } : p
-        )
-      }, { merge: true });
+      await setDoc(
+        sessionRef,
+        {
+          players: gameState.players.map((p) =>
+            p.id === playerId ? { ...p, currentJob: jobWithEndTime } : p,
+          ),
+        },
+        { merge: true },
+      );
 
       setSelectedJob(jobWithEndTime);
       setCurrentEventIndex(0);
       setEventResults([]);
       setJackpotEvent(null);
       setJobEventChoice(null);
-      setJobScreen('working');
+      setJobScreen("working");
       return;
     }
   };
 
+<<<<<<< Updated upstream
   const formatTime = (t) => {
     const hours = Math.floor(t / 60) % 24;
     const minutes = Math.round(t % 60);
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+=======
+  const [cacheProgress, setCacheProgress] = useState(null);
+
+  const cacheAllRoutes = async () => {
+    const allSegments = [];
+
+    // Saml alle unikke segmenter på tværs af alle linjer
+    const seen = new Set();
+    TRANSIT_LINES.forEach((line) => {
+      if (line.type === "flight") return;
+      for (let i = 0; i < line.cities.length - 1; i++) {
+        const fromCity = line.cities[i];
+        const toCity = line.cities[i + 1];
+        const key = `${line.type}_${[fromCity, toCity].sort().join("_")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        allSegments.push({ fromCity, toCity, type: line.type });
+      }
+    });
+
+    let done = 0;
+    setCacheProgress({ done: 0, total: allSegments.length });
+
+    for (const { fromCity, toCity, type } of allSegments) {
+      const pos1 = CITIES[fromCity]?.pos;
+      const pos2 = CITIES[toCity]?.pos;
+      if (!pos1 || !pos2) {
+        done++;
+        continue;
+      }
+
+      const key = `${type}_${[fromCity, toCity].sort().join("_")}`;
+      const cacheRef = doc(
+        db,
+        "artifacts",
+        appId,
+        "public",
+        "data",
+        "routes",
+        key,
+      );
+
+      // Skip hvis allerede cachet
+      try {
+        const cached = await getDoc(cacheRef);
+        if (cached.exists()) {
+          done++;
+          setCacheProgress({ done: ++done, total: allSegments.length });
+          continue;
+        }
+      } catch {}
+
+      // Hent ruten
+      let path = null;
+      if (type === "train") {
+        const result = await fetchBRouterRoute(pos1, pos2);
+        path = result?.path;
+      } else {
+        const result = await fetchOSRMDriving(pos1, pos2, "driving");
+        path = result?.path;
+      }
+
+      if (path) {
+        const pathForFirebase = path.map((p) => ({ lat: p[0], lng: p[1] }));
+        await setDoc(cacheRef, { path: pathForFirebase, cachedAt: Date.now() });
+      }
+
+      // Lille pause så vi ikke overbelaster APIerne
+      await new Promise((r) => setTimeout(r, 300));
+      setCacheProgress({ done: ++done, total: allSegments.length });
+    }
+
+    setCacheProgress(null);
+    alert("✅ Alle ruter cachet!");
+>>>>>>> Stashed changes
   };
 
   // Hjælpefunktion: Haversine-formel til at beregne km mellem to koordinater
   const getDist = (pos1, pos2) => {
     if (!pos1 || !pos2) return 0;
     const R = 6371; // Jordens radius i km
-    const dLat = (pos2[0] - pos1[0]) * Math.PI / 180;
-    const dLon = (pos2[1] - pos1[1]) * Math.PI / 180;
+    const dLat = ((pos2[0] - pos1[0]) * Math.PI) / 180;
+    const dLon = ((pos2[1] - pos1[1]) * Math.PI) / 180;
     const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(pos1[0] * Math.PI / 180) * Math.cos(pos2[0] * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((pos1[0] * Math.PI) / 180) *
+        Math.cos((pos2[0] * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
   const departures = React.useMemo(() => {
-    const me = gameState?.players?.find(p => p.id === playerId);
+    const me = gameState?.players?.find((p) => p.id === playerId);
     if (!me || me.isTraveling) return [];
 
     const list = [];
     const now = gameState.gameTime;
 
-    TRANSIT_LINES.forEach(line => {
+    TRANSIT_LINES.forEach((line) => {
       if (line.type !== activeTab) return;
       const myIndex = line.cities.indexOf(me.currentCity);
       if (myIndex === -1) return;
 
+      const departureIncident = getActiveIncident(
+        gameState?.incidents,
+        me.currentCity,
+        line.type,
+      );
+
       const directions = [
-        { destinations: line.cities.slice(myIndex + 1), label: "mod " + line.cities[line.cities.length - 1] },
-                          { destinations: line.cities.slice(0, myIndex).reverse(), label: "mod " + line.cities[0] }
+        {
+          destinations: line.cities.slice(myIndex + 1),
+          label: "mod " + line.cities[line.cities.length - 1],
+        },
+        {
+          destinations: line.cities.slice(0, myIndex).reverse(),
+          label: "mod " + line.cities[0],
+        },
       ];
 
       const currentStyle = CATEGORY_STYLE[line.category] ||
-      CATEGORY_STYLE[line.name] ||
-      { label: line.name.slice(0, 2), color: line.color || "#64748b" };
+        CATEGORY_STYLE[line.name] || {
+          label: line.name.slice(0, 2),
+          color: line.color || "#64748b",
+        };
 
       directions.forEach((dir, dirIndex) => {
         if (dir.destinations.length === 0) return;
@@ -1754,8 +2891,9 @@ export default function App() {
         // GÅ ET SKRIDT TILBAGE for at fange den afgang, der LIGE er kørt
         nextDep -= gap;
 
-        for (let i = 0; i < 9; i++) { // Vi tager 9 med for at have plads til den afgåede
-          const baseTime = nextDep + (i * gap);
+        for (let i = 0; i < 9; i++) {
+          // Vi tager 9 med for at have plads til den afgåede
+          const baseTime = nextDep + i * gap;
 
           // ÆNDRET: Vi tillader tog der er op til 1 minut gamle (så vi kan se dem som "AFGÅET")
           if (baseTime < now - 1) continue;
@@ -1764,15 +2902,20 @@ export default function App() {
           const seedStr = line.name + baseTime + finalGoal;
           let hash = 0;
           for (let j = 0; j < seedStr.length; j++) {
-            hash = ((hash << 5) - hash) + seedStr.charCodeAt(j);
+            hash = (hash << 5) - hash + seedStr.charCodeAt(j);
             hash |= 0;
           }
           const r = Math.abs(hash);
 
-          const isCancelled = (r % 100) < (line.cancelRisk || 3);
+          const randomCancel = r % 100 < (line.cancelRisk || 3);
           let delay = 0;
-          if ((r % 100) < (line.delayRisk || 15)) {
+          if (r % 100 < (line.delayRisk || 15)) {
             delay = (r % 40) + 5;
+          }
+
+          const incidentDelay = getIncidentDelayMinutes(departureIncident);
+          if (departureIncident && !isIncidentCancellation(departureIncident)) {
+            delay += incidentDelay;
           }
 
           const actualTime = baseTime + delay;
@@ -1787,10 +2930,10 @@ export default function App() {
             time: baseTime,
             actualTime: actualTime,
             delay: delay,
-            isCancelled: isCancelled,
             type: line.type,
             style: currentStyle,
-            isDeparted: actualTime < now // Markér hvis det ER kørt
+            isDeparted: actualTime < now, // Markér hvis det ER kørt
+            incident: departureIncident || null,
           });
         }
       });
@@ -1801,7 +2944,7 @@ export default function App() {
 
     // BUNDLING LOGIK:
     // Find de tog der er afgået
-    const departedNow = sorted.filter(d => d.isDeparted);
+    const departedNow = sorted.filter((d) => d.isDeparted);
 
     if (departedNow.length > 0) {
       // Her kan du lave en useEffect eller trigger til at tælle op til 10
@@ -1810,127 +2953,180 @@ export default function App() {
     }
 
     // Returnér kun fremtidige tog til hovedlisten
-    return sorted.filter(d => !d.isDeparted);
+    return sorted.filter((d) => !d.isDeparted);
   }, [gameState, activeTab, user?.uid]);
+
+const filteredDepartures = departures.filter(dep => {
+  // 1. Tjek først om det er den rigtige hovedkategori (Tog, Bus, osv.)
+  if (dep.category !== activeTab) return false;
+
+  // 2. Hvis vi er under "Tog", tjek så sub-filteret
+  if (activeTab === 'train') {
+    if (subFilter === 'all') return true;
+    return dep.type === subFilter;
+  }
+
+  return true;
+});
 
 
   // =========================================================================
   // 8. BRUGERFLADE (JSX - Det du ser på skærmen)
   // =========================================================================
 
-
-
   // --- A. LOADING SKÆRM ---
 
-  if (!user) return <div className="h-screen bg-black flex items-center justify-center text-blue-500 font-mono text-xl uppercase tracking-widest animate-pulse">Loading...</div>;
-
+  if (!user)
+    return (
+      <div className="h-screen bg-black flex items-center justify-center text-blue-500 font-mono text-xl uppercase tracking-widest animate-pulse">
+        Loading...
+      </div>
+    );
 
   // --- B. VINDER SKÆRM ---
 
-
-  if (gameState?.status === 'finished') {
+  if (gameState?.status === "finished") {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center py-12 px-6 overflow-y-auto">
-      <div className="max-w-md w-full space-y-8">
-      {/* TOP SEKTION: TROFÆ OG NAVN */}
-      <div className="text-center space-y-4">
-      <Trophy size={100} className="text-amber-400 mx-auto animate-bounce" />
-      <h1 className="text-6xl font-black italic tracking-tighter">VINDER FUNDET!</h1>
+        <div className="max-w-md w-full space-y-8">
+          {/* TOP SEKTION: TROFÆ OG NAVN */}
+          <div className="text-center space-y-4">
+            <Trophy
+              size={100}
+              className="text-amber-400 mx-auto animate-bounce"
+            />
+            <h1 className="text-6xl font-black italic tracking-tighter">
+              VINDER FUNDET!
+            </h1>
 
-      <div className="bg-white/10 p-8 rounded-[40px] border border-white/20 shadow-2xl">
-      <div className="text-8xl mb-4">{gameState.winner?.avatar}</div>
-      <div className="text-3xl font-black uppercase text-blue-400 leading-none">
-      {gameState.winner?.name}
-      </div>
-      <p className="text-slate-400 uppercase tracking-widest mt-2 text-sm">
-      Nåede først til {gameState.goalCity}
-      </p>
-      </div>
-      </div>
-
-      {/* REJSE GENNEMGANG (DEN NYE DEL) */}
-      <div className="bg-white/5 border border-white/10 rounded-[32px] p-6 space-y-6">
-      <h3 className="text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500 border-b border-white/5 pb-4">
-      Vinderens Rejsejournal
-      </h3>
-
-      <div className="space-y-0">
-      {gameState.winner?.history?.map((step, i) => {
-        const TransportIcon = TRAVEL_TYPES[step.type]?.icon || Bus;
-        return (
-          <div key={i} className="flex gap-4 group">
-          {/* Tidslinje-streg og ikon */}
-          <div className="flex flex-col items-center">
-          <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-          <TransportIcon size={20} />
-          </div>
-          <div className="w-0.5 h-10 bg-gradient-to-b from-white/20 to-transparent" />
+            <div className="bg-white/10 p-8 rounded-[40px] border border-white/20 shadow-2xl">
+              <div className="text-8xl mb-4">{gameState.winner?.avatar}</div>
+              <div className="text-3xl font-black uppercase text-blue-400 leading-none">
+                {gameState.winner?.name}
+              </div>
+              <p className="text-slate-400 uppercase tracking-widest mt-2 text-sm">
+                Nåede først til {gameState.goalCity}
+              </p>
+            </div>
           </div>
 
-          {/* Detaljer om ruten */}
-          <div className="flex-1 pt-1">
-          <div className="flex justify-between items-baseline">
-          <div className="font-bold text-lg">{step.from} → {step.to}</div>
-          <div className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-slate-400">
-          {Math.floor(step.time / 60).toString().padStart(2, '0')}:{(step.time % 60).toString().padStart(2, '0')}
-          </div>
-          </div>
-          <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">
-          {TRAVEL_TYPES[step.type]?.label} • {step.line}
-          </div>
-          </div>
-          </div>
-        );
-      })}
+          {/* REJSE GENNEMGANG (DEN NYE DEL) */}
+          <div className="bg-white/5 border border-white/10 rounded-[32px] p-6 space-y-6">
+            <h3 className="text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500 border-b border-white/5 pb-4">
+              Vinderens Rejsejournal
+            </h3>
 
-      {/* Slutdestination */}
-      <div className="flex gap-4">
-      <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.4)]">
-      <Flag size={20} className="text-white" />
-      </div>
-      <div className="flex-1 pt-2">
-      <div className="font-black text-green-400 uppercase italic">I mål: {gameState.goalCity}</div>
-      </div>
-      </div>
-      </div>
-      </div>
+            <div className="space-y-0">
+              {gameState.winner?.history?.map((step, i) => {
+                const TransportIcon = TRAVEL_TYPES[step.type]?.icon || Bus;
+                return (
+                  <div key={i} className="flex gap-4 group">
+                    {/* Tidslinje-streg og ikon */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                        <TransportIcon size={20} />
+                      </div>
+                      <div className="w-0.5 h-10 bg-gradient-to-b from-white/20 to-transparent" />
+                    </div>
 
-      {/* RESTART KNAP */}
-      <button
-      onClick={() => window.location.reload()}
-      className="w-full bg-blue-600 py-6 rounded-3xl font-black uppercase text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-blue-600/20"
-      >
-      Spil Igen
-      </button>
-      </div>
+                    {/* Detaljer om ruten */}
+                    <div className="flex-1 pt-1">
+                      <div className="flex justify-between items-baseline">
+                        <div className="font-bold text-lg">
+                          {step.from} → {step.to}
+                        </div>
+                        <div className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-slate-400">
+                          {Math.floor(step.time / 60)
+                            .toString()
+                            .padStart(2, "0")}
+                          :{(step.time % 60).toString().padStart(2, "0")}
+                        </div>
+                      </div>
+                      <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">
+                        {TRAVEL_TYPES[step.type]?.label} • {step.line}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Slutdestination */}
+              <div className="flex gap-4">
+                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+                  <Flag size={20} className="text-white" />
+                </div>
+                <div className="flex-1 pt-2">
+                  <div className="font-black text-green-400 uppercase italic">
+                    I mål: {gameState.goalCity}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TRANSPORT METODER BRUGT */}
+          {(() => {
+            const usedTypes = [...new Set(gameState.winner?.history?.map(step => step.type) || [])];
+            if (usedTypes.length > 0) {
+              return (
+                <div className="bg-white/5 border border-white/10 rounded-[32px] p-6 space-y-4">
+                  <h3 className="text-center text-xs font-black uppercase tracking-[0.2em] text-slate-500 border-b border-white/5 pb-4">
+                    Transport Metoder Brugt
+                  </h3>
+                  <div className="flex flex-wrap gap-4 justify-center">
+                    {usedTypes.map(type => {
+                      const TransportIcon = TRAVEL_TYPES[type]?.icon || Bus;
+                      const label = TRAVEL_TYPES[type]?.label || type;
+                      return (
+                        <div key={type} className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full">
+                          <TransportIcon size={16} className="text-blue-400" />
+                          <span className="text-sm font-bold uppercase text-slate-300">{label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          {/* RESTART KNAP */}
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 py-6 rounded-3xl font-black uppercase text-xl hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-blue-600/20"
+          >
+            Spil Igen
+          </button>
+        </div>
       </div>
     );
   }
 
   // --- C. HOVEDMENU (Opdateret med logo-fokus og versionsnummer) ---
 
-  if (view === 'menu' && !gameState) {
+  if (view === "menu" && !gameState) {
     // SPLASH SCREEN (Studio Credit)
     if (showSplash) {
       return (
         <div className="h-screen bg-slate-950 flex flex-col items-center justify-center relative overflow-hidden">
-        <div className="absolute w-64 h-64 bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
+          <div className="absolute w-64 h-64 bg-blue-600/10 rounded-full blur-[120px] animate-pulse" />
 
-        <div className="relative flex flex-col items-center animate-in fade-in zoom-in duration-1000">
-        <img
-        src="/mmc.png"
-        alt="Studio Logo"
-        className="w-32 h-32 object-contain mb-6 opacity-90"
-        />
-        <div className="space-y-1 text-center">
-        <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase opacity-70"></p>
-        <h2 className="text-white font-light tracking-[0.15em] text-lg uppercase"></h2>
-        </div>
-        </div>
+          <div className="relative flex flex-col items-center animate-in fade-in zoom-in duration-1000">
+            <img
+              src="/mmc.png"
+              alt="Studio Logo"
+              className="w-32 h-32 object-contain mb-6 opacity-90"
+            />
+            <div className="space-y-1 text-center">
+              <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase opacity-70"></p>
+              <h2 className="text-white font-light tracking-[0.15em] text-lg uppercase"></h2>
+            </div>
+          </div>
 
-        <div className="absolute bottom-20 w-32 h-[1px] bg-slate-900 overflow-hidden">
-        <div className="h-full bg-blue-500/50 animate-[loading_3s_ease-in-out]" />
-        </div>
+          <div className="absolute bottom-20 w-32 h-[1px] bg-slate-900 overflow-hidden">
+            <div className="h-full bg-blue-500/50 animate-[loading_3s_ease-in-out]" />
+          </div>
         </div>
       );
     }
@@ -1938,71 +3134,73 @@ export default function App() {
     // SELVE HOVEDMENU
     return (
       <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-8 overflow-hidden relative">
-      {/* Dynamisk Baggrundslys */}
-      <div className="absolute inset-0 pointer-events-none">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-blue-600/5 blur-[150px]" />
-      </div>
+        {/* Dynamisk Baggrundslys */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-blue-600/5 blur-[150px]" />
+        </div>
 
-      {/* Versionsnummer i hjørnet */}
-      <div className="absolute bottom-6 right-8 opacity-30 select-none">
-      <p className="text-[10px] font-mono tracking-widest uppercase">Build v0.2.0 alpha</p>
-      </div>
+        {/* Versionsnummer i hjørnet */}
+        <div className="absolute bottom-6 right-8 opacity-30 select-none">
+          <p className="text-[10px] font-mono tracking-widest uppercase">
+            Build v0.2.0 alpha
+          </p>
+        </div>
 
-      <div className="flex flex-col items-center max-w-lg w-full relative z-10">
+        <div className="flex flex-col items-center max-w-lg w-full relative z-10">
+          {/* --- DIT LOGO HER --- */}
+          <div className="w-full mb-12 animate-in fade-in slide-in-from-top-4 duration-1000">
+            <img
+              src="/Personligt Logo-08.png" // Skift evt. til dit Europa Express logo her
+              className="w-full max-w-[400px] mx-auto drop-shadow-[0_0_35px_rgba(59,130,246,0.3)]"
+              alt="Main Logo"
+            />
+            <p className="text-center text-slate-500 font-bold uppercase tracking-[0.5em] text-[10px] mt-6">
+              subtekst
+            </p>
+          </div>
 
-      {/* --- DIT LOGO HER --- */}
-      <div className="w-full mb-12 animate-in fade-in slide-in-from-top-4 duration-1000">
-      <img
-      src="/Personligt Logo-08.png" // Skift evt. til dit Europa Express logo her
-      className="w-full max-w-[400px] mx-auto drop-shadow-[0_0_35px_rgba(59,130,246,0.3)]"
-      alt="Main Logo"
-      />
-      <p className="text-center text-slate-500 font-bold uppercase tracking-[0.5em] text-[10px] mt-6">
-      subtekst
-      </p>
-      </div>
+          {/* Menu Knapper */}
+<div className="w-full max-w-sm space-y-4 animate-in fade-in slide-in-from-bottom-8 delay-300 duration-700">
+  <button 
+    onClick={() => { setGameMode('party'); setView('join'); }}
+    className="w-full bg-slate-900/40 border border-white/5 py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-slate-800 hover:border-white/10 transition-all"
+  >
+    🎉 Party Mode
+  </button>
 
-      {/* Menu Knapper */}
-      <div className="w-full max-w-sm space-y-4 animate-in fade-in slide-in-from-bottom-8 delay-300 duration-700">
-      <button
-      onClick={() => setView('join')}
-      className="group relative w-full bg-blue-600 hover:bg-blue-500 text-white py-6 rounded-2xl font-black uppercase transition-all active:scale-95 shadow-[0_15px_40px_rgba(59,130,246,0.25)] overflow-hidden"
-      >
-      <span className="relative z-10 flex items-center justify-center gap-2">
-      <Play size={20} fill="currentColor" />
-      Start Rejsen
-      </span>
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]" />
-      </button>
+  <button 
+    onClick={() => { setGameMode('singlescreen'); setView('join'); }}
+    className="w-full bg-slate-900/40 border border-white/5 py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-slate-800 hover:border-white/10 transition-all"
+  >
+    🖥️ Single Screen
+  </button>
 
-      <button
-      onClick={startHost}
-      className="w-full bg-slate-900/40 border border-white/5 py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-slate-800 hover:border-white/10 transition-all"
-      >
-      Host Simulation
-      </button>
-      </div>
-      </div>
+  <button
+    onClick={startHost}
+    className="w-full bg-slate-900/40 border border-white/5 py-4 rounded-xl font-bold text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-white hover:bg-slate-800 hover:border-white/10 transition-all"
+  >
+    Host Simulation
+  </button>
+</div>
+        </div>
       </div>
     );
   }
 
-
   // --- D. PAS-KONTROL (Join skærm - Med udvidet avatar-vælger) ---
-  if (view === 'join' && !gameState) {
+  if (view === "join" && !gameState) {
     return (
       <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-start p-6 overflow-y-auto no-scrollbar relative font-sans">
+        {/* Dynamisk baggrundsglød */}
+        <div
+          className="fixed inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
+          style={{
+            background: `radial-gradient(circle at 50% 30%, ${playerColor} 0%, transparent 70%)`,
+            filter: "blur(60px)",
+          }}
+        />
 
-      {/* Dynamisk baggrundsglød */}
-      <div
-      className="fixed inset-0 opacity-20 transition-all duration-1000 pointer-events-none"
-      style={{
-        background: `radial-gradient(circle at 50% 30%, ${playerColor} 0%, transparent 70%)`,
-            filter: 'blur(60px)'
-      }}
-      />
-
-      <style>{`
+        <style>{`
         @keyframes scan-line {
           0% { transform: translateY(-100%); opacity: 0; }
           50% { opacity: 1; }
@@ -2022,148 +3220,223 @@ export default function App() {
         `}</style>
 
         <div className="w-full max-w-md z-10 animate-in fade-in zoom-in duration-700 mt-4 mb-12">
-
-        {/* PASSET */}
-        <div
-        className="passport-cover rounded-t-[40px] p-2 border-t border-x border-white/20 relative transition-colors duration-700"
-        style={{ backgroundColor: playerColor }}
-        >
-        <div className="bg-[#f4f1e1] rounded-t-[36px] p-6 text-slate-900 shadow-inner overflow-hidden relative">
-
-        {/* Header */}
-        <div className="flex justify-between items-start mb-6 relative z-10">
-        <div className="space-y-0.5">
-        <h2 className="text-3xl font-black uppercase tracking-tighter italic leading-none foil-gold">Passport</h2>
-        <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">European Transit Union</p>
-        </div>
-        </div>
-
-        <div className="flex gap-6 relative z-10">
-        {/* Profilbillede med "Scanning" effekt */}
-        <div className="space-y-3">
-        <div
-        className="w-28 h-36 border-2 border-slate-300 rounded-lg relative overflow-hidden bg-white/80 shadow-md transition-all duration-700"
-        style={{ boxShadow: `inset 0 0 20px ${playerColor}33` }}
-        >
-        {/* Centreret Avatar - Forstørret og rykket en smule ned for at ligne et brystbillede/pasfoto */}
-        <div className="absolute inset-0 flex items-center justify-center text-8xl select-none leading-none transform translate-y-2 drop-shadow-sm">
-        {playerAvatar}
-        </div>
-
-        {/* Den blå scan-linje - Ligger over avataren */}
-        <div className="absolute inset-x-0 h-1 bg-blue-500/40 shadow-[0_0_12px_rgba(59,130,246,0.8)] z-20 animate-[scan-line_3s_linear_infinite]" />
-
-        {/* Subtil tekstur-overlay for at få det til at ligne print på papir */}
-        <div className="absolute inset-0 opacity-10 pointer-events-none passport-pattern" />
-
-        <div className="absolute bottom-0 w-full bg-slate-800/90 py-1.5 text-[7px] font-black uppercase text-center text-white tracking-widest z-30">
-        Digital Bio-ID
-        </div>
-        </div>
-        </div>
-
-        {/* Data */}
-        <div className="flex-1 space-y-4">
-        <div className="border-b border-slate-400/50 pb-1">
-        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">Name</label>
-        <input
-        placeholder="ENTER NAME"
-        className="w-full bg-transparent border-none p-0 text-lg font-black uppercase focus:ring-0 placeholder:text-slate-300"
-        value={playerName}
-        onChange={e => setPlayerName(e.target.value)}
-        />
-        </div>
-        <div className="border-b border-slate-400/50 pb-1">
-        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">Visa Code</label>
-        <input
-        placeholder="CODE"
-        maxLength={4}
-        className="w-full bg-transparent border-none p-0 text-lg font-mono font-black uppercase focus:ring-0 placeholder:text-slate-300 tracking-[0.3em]"
-        value={roomCode}
-        onChange={e => setRoomCode(e.target.value.toUpperCase())}
-        />
-        </div>
-        </div>
-        </div>
-
-        {/* MRZ Zone */}
-        <div className="mt-6 pt-4 border-t border-slate-300/50 font-mono text-[8px] text-slate-400 leading-none opacity-60">
-        P&lt;DNK{playerName.replace(/\s/g, '&lt;').padEnd(12, '&lt;').toUpperCase()}&lt;&lt;&lt;&lt;&lt;<br/>
-        {roomCode.padEnd(4, '0')}1234567DNK8501015M2612317
-        </div>
-        </div>
-        </div>
-
-        {/* VALGMENU (Med plads til 2 rækker avatars) */}
-        <div className="bg-slate-900/90 backdrop-blur-xl p-6 rounded-b-[40px] border-x border-b border-white/10 space-y-6 shadow-2xl">
-
-        {/* Farvevælger */}
-        <div>
-        <div className="flex justify-center gap-2">
-        {['#7f1d1d', '#1e3a8a', '#064e3b', '#78350f', '#4c1d95', '#1e293b', '#475569'].map(color => (
-          <button
-          key={color}
-          onClick={() => setPlayerColor(color)}
-          className={`w-7 h-7 rounded-full border-2 transition-all ${playerColor === color ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-40'}`}
-          style={{ backgroundColor: color }}
-          />
-        ))}
-        </div>
-        </div>
-
-        {/* Avatarvælger - Nu med 2 rækker (grid-cols-6) */}
-        <div className="space-y-2">
-        <span className="block text-center text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Select Persona</span>
-        <div className="grid grid-cols-6 gap-2">
-        {AVATARS.map(av => (
-          <button
-          key={av}
-          onClick={() => setPlayerAvatar(av)}
-          className={`aspect-square flex items-center justify-center text-xl rounded-xl transition-all ${
-            playerAvatar === av
-            ? 'bg-white text-slate-950 scale-110 shadow-lg ring-2'
-            : 'bg-white/5 text-white/40 hover:bg-white/10'
-          }`}
-          style={{ ringColor: playerColor }}
+          {/* PASSET */}
+          <div
+            className="passport-cover rounded-t-[40px] p-2 border-t border-x border-white/20 relative transition-colors duration-700"
+            style={{ backgroundColor: playerColor }}
           >
-          {av}
+            <div className="bg-[#f4f1e1] rounded-t-[36px] p-6 text-slate-900 shadow-inner overflow-hidden relative">
+              {/* Header */}
+              <div className="flex justify-between items-start mb-6 relative z-10">
+                <div className="space-y-0.5">
+                  <h2 className="text-3xl font-black uppercase tracking-tighter italic leading-none foil-gold">
+                    Passport
+                  </h2>
+                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em]">
+                    European Transit Union
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-6 relative z-10">
+                {/* Profilbillede med "Scanning" effekt */}
+                <div className="space-y-3">
+                  <div
+                    className="w-28 h-36 border-2 border-slate-300 rounded-lg relative overflow-hidden bg-white/80 shadow-md transition-all duration-700"
+                    style={{ boxShadow: `inset 0 0 20px ${playerColor}33` }}
+                  >
+                    {/* Centreret Avatar - Forstørret og rykket en smule ned for at ligne et brystbillede/pasfoto */}
+                    <div className="absolute inset-0 flex items-center justify-center text-8xl select-none leading-none transform translate-y-2 drop-shadow-sm">
+                      {playerAvatar}
+                    </div>
+
+                    {/* Den blå scan-linje - Ligger over avataren */}
+                    <div className="absolute inset-x-0 h-1 bg-blue-500/40 shadow-[0_0_12px_rgba(59,130,246,0.8)] z-20 animate-[scan-line_3s_linear_infinite]" />
+
+                    {/* Subtil tekstur-overlay for at få det til at ligne print på papir */}
+                    <div className="absolute inset-0 opacity-10 pointer-events-none passport-pattern" />
+
+                    <div className="absolute bottom-0 w-full bg-slate-800/90 py-1.5 text-[7px] font-black uppercase text-center text-white tracking-widest z-30">
+                      Digital Bio-ID
+                    </div>
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div className="flex-1 space-y-4">
+                  <div className="border-b border-slate-400/50 pb-1">
+                    <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">
+                      Name
+                    </label>
+                    <input
+                      placeholder="ENTER NAME"
+                      className="w-full bg-transparent border-none p-0 text-lg font-black uppercase focus:ring-0 placeholder:text-slate-300"
+                      value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="border-b border-slate-400/50 pb-1">
+                    <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest">
+                      Visa Code
+                    </label>
+                    <input
+                      placeholder="CODE"
+                      maxLength={4}
+                      className="w-full bg-transparent border-none p-0 text-lg font-mono font-black uppercase focus:ring-0 placeholder:text-slate-300 tracking-[0.3em]"
+                      value={roomCode}
+                      onChange={(e) =>
+                        setRoomCode(e.target.value.toUpperCase())
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* MRZ Zone */}
+              <div className="mt-6 pt-4 border-t border-slate-300/50 font-mono text-[8px] text-slate-400 leading-none opacity-60">
+                P&lt;DNK
+                {playerName
+                  .replace(/\s/g, "&lt;")
+                  .padEnd(12, "&lt;")
+                  .toUpperCase()}
+                &lt;&lt;&lt;&lt;&lt;
+                <br />
+                {roomCode.padEnd(4, "0")}1234567DNK8501015M2612317
+              </div>
+            </div>
+          </div>
+
+          {/* VALGMENU (Med plads til 2 rækker avatars) */}
+          <div className="bg-slate-900/90 backdrop-blur-xl p-6 rounded-b-[40px] border-x border-b border-white/10 space-y-6 shadow-2xl">
+            {/* Farvevælger */}
+            <div>
+              <div className="flex justify-center gap-2">
+                {[
+                  "#7f1d1d",
+                  "#1e3a8a",
+                  "#064e3b",
+                  "#78350f",
+                  "#4c1d95",
+                  "#1e293b",
+                  "#475569",
+                ].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setPlayerColor(color)}
+                    className={`w-7 h-7 rounded-full border-2 transition-all ${playerColor === color ? "border-white scale-110 shadow-lg" : "border-transparent opacity-40"}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Avatarvælger - Nu med 2 rækker (grid-cols-6) */}
+            <div className="space-y-2">
+              <span className="block text-center text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">
+                Select Persona
+              </span>
+              <div className="grid grid-cols-6 gap-2">
+                {AVATARS.map((av) => (
+                  <button
+                    key={av}
+                    onClick={() => setPlayerAvatar(av)}
+                    className={`aspect-square flex items-center justify-center text-xl rounded-xl transition-all ${
+                      playerAvatar === av
+                        ? "bg-white text-slate-950 scale-110 shadow-lg ring-2"
+                        : "bg-white/5 text-white/40 hover:bg-white/10"
+                    }`}
+                    style={{ ringColor: playerColor }}
+                  >
+                    {av}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* JOIN KNAP */}
+            <button
+              disabled={!playerName || !roomCode}
+              onClick={startJoin}
+              className="w-full relative group overflow-hidden py-4 rounded-2xl font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30"
+              style={{ backgroundColor: playerColor }}
+            >
+              <div className="relative z-10 flex items-center justify-center gap-2">
+                Boarding <Navigation size={18} className="fill-current" />
+              </div>
+            </button>
+          </div>
+
+          {/* Admin Link */}
+          <button
+            onClick={startHost}
+            className="w-full mt-6 py-2 text-[8px] font-black text-slate-600 uppercase tracking-[0.4em] hover:text-blue-400 transition-colors"
+          >
+            — Admin Terminal —
           </button>
-        ))}
         </div>
-        </div>
-
-        {/* JOIN KNAP */}
-        <button
-        disabled={!playerName || !roomCode}
-        onClick={startJoin}
-        className="w-full relative group overflow-hidden py-4 rounded-2xl font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-30"
-        style={{ backgroundColor: playerColor }}
-        >
-        <div className="relative z-10 flex items-center justify-center gap-2">
-        Boarding <Navigation size={18} className="fill-current" />
-        </div>
-        </button>
-        </div>
-
-        {/* Admin Link */}
-        <button
-        onClick={startHost}
-        className="w-full mt-6 py-2 text-[8px] font-black text-slate-600 uppercase tracking-[0.4em] hover:text-blue-400 transition-colors"
-        >
-        — Admin Terminal —
-        </button>
-        </div>
-        </div>
+      </div>
     );
   }
 
-
   // --- D. Lobby (Opgraderet med spillernes egne farver) ---
 
+<<<<<<< Updated upstream
   if (gameState?.status === 'lobby') {
+=======
+  if (gameState?.status === "lobby") {
+    const cpuCount = gameState.players.filter((p) => p.isAI).length;
+
+    const addCPU = async (difficulty) => {
+      const idx = cpuCount % CPU_NAMES.length;
+      const newCPU = {
+        id: `cpu_${Math.random().toString(36).substring(2)}`,
+        name: CPU_NAMES[idx],
+        avatar: CPU_AVATARS[idx],
+        color: CPU_COLORS[idx % CPU_COLORS.length],
+        isAI: true,
+        aiDifficulty: difficulty,
+        currentCity: "København",
+        money: 5000,
+        isTraveling: false,
+        history: [],
+      };
+      await updateDoc(
+        doc(
+          db,
+          "artifacts",
+          appId,
+          "public",
+          "data",
+          "sessions",
+          gameState.code,
+        ),
+        {
+          players: [...gameState.players, newCPU],
+        },
+      );
+    };
+
+    const removeCPU = async (cpuId) => {
+      await updateDoc(
+        doc(
+          db,
+          "artifacts",
+          appId,
+          "public",
+          "data",
+          "sessions",
+          gameState.code,
+        ),
+        {
+          players: gameState.players.filter((p) => p.id !== cpuId),
+        },
+      );
+    };
+
+>>>>>>> Stashed changes
     return (
       <>
-      <style>{`
+        <style>{`
         @keyframes scanline {
           0% { transform: translateY(-100%); }
           100% { transform: translateY(100%); }
@@ -2177,7 +3450,10 @@ export default function App() {
         `}</style>
 
         <div className="h-screen bg-slate-950 text-white flex flex-col items-center justify-start p-8 overflow-hidden relative font-sans">
+          <div className="absolute inset-0 bg-grid-slate pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent pointer-events-none" />
 
+<<<<<<< Updated upstream
         {/* Baggrundseffekter */}
         <div className="absolute inset-0 bg-grid-slate pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent pointer-events-none" />
@@ -2306,22 +3582,239 @@ export default function App() {
           </div>
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
           </button>
+=======
+          {/* Top Header */}
+          <div className="w-full max-w-6xl flex justify-between items-center mb-12 relative z-10 border-b border-white/10 pb-4">
+            <div className="flex items-center gap-4">
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_#3b82f6]" />
+              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-500">
+                Terminal 1 // Lobby Open
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Passagerer: {gameState.players.filter((p) => !p.isAI).length} ·
+                CPU: {cpuCount}
+              </span>
+            </div>
           </div>
-        )}
+
+          {/* Code Display */}
+          <div className="relative z-10 flex flex-col items-center mb-12 animate-in fade-in slide-in-from-top-8 duration-700">
+            <div className="text-[10px] font-black mb-4 text-slate-400 uppercase tracking-[0.6em] bg-slate-900/80 px-4 py-1 rounded-full border border-white/5 backdrop-blur-md">
+              Entry Authentication
+            </div>
+            <div className="relative group">
+              <div className="absolute -inset-4 bg-blue-600/20 blur-2xl group-hover:bg-blue-600/30 transition-all" />
+              <div className="relative bg-slate-900 border-2 border-blue-500/50 px-12 py-6 rounded-3xl shadow-2xl">
+                <div className="text-8xl md:text-9xl font-black text-white tracking-[0.2em] font-mono leading-none">
+                  {gameState.code}
+                </div>
+                <div className="absolute inset-0 w-full h-1 bg-blue-400/20 shadow-[0_0_15px_#3b82f6] opacity-50 animate-[scanline_3s_linear_infinite]" />
+              </div>
+            </div>
+          </div>
+
+          {/* Player Boarding Passes */}
+          <div className="flex flex-wrap gap-6 mb-8 justify-center max-w-6xl overflow-y-auto relative z-10 no-scrollbar">
+            {gameState.players.map((p, idx) => {
+              const pColor = p.color || "#3b82f6";
+              return (
+                <div
+                  key={p.id}
+                  className="w-64 group relative animate-in fade-in zoom-in duration-500"
+                  style={{ animationDelay: `${idx * 100}ms` }}
+                >
+                  <div
+                    className="bg-slate-900 border rounded-2xl overflow-hidden shadow-2xl transition-all group-hover:-translate-y-1"
+                    style={{ borderColor: pColor + "40" }}
+                  >
+                    <div
+                      className="p-3 flex justify-between items-center text-white"
+                      style={{ backgroundColor: pColor }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {p.isAI ? (
+                          <span className="text-[9px] font-black uppercase">
+                            🤖 CPU
+                          </span>
+                        ) : (
+                          <>
+                            <Plane size={13} className="rotate-90" />
+                            <span className="text-[9px] font-black uppercase">
+                              Boarding
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {p.isAI && (
+                          <span className="text-[9px] bg-black/20 px-1.5 py-0.5 rounded font-black">
+                            {AI_DIFFICULTY[p.aiDifficulty]?.emoji}{" "}
+                            {AI_DIFFICULTY[p.aiDifficulty]?.label}
+                          </span>
+                        )}
+                        {p.isAI && role === "host" && (
+                          <button
+                            onClick={() => removeCPU(p.id)}
+                            className="ml-1 text-white/60 hover:text-white font-black text-xs leading-none"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-4 flex gap-4 items-center bg-gradient-to-br from-slate-900 to-slate-800">
+                      <div
+                        className="text-4xl w-14 h-14 flex items-center justify-center rounded-xl border"
+                        style={{
+                          backgroundColor: pColor + "20",
+                          borderColor: pColor + "50",
+                        }}
+                      >
+                        {p.avatar}
+                      </div>
+                      <div>
+                        <span
+                          className="text-[8px] font-black uppercase tracking-widest mb-0.5 block"
+                          style={{ color: pColor }}
+                        >
+                          Passenger
+                        </span>
+                        <span className="font-black text-base uppercase leading-none">
+                          {p.name}
+                        </span>
+                        {p.isAI && (
+                          <div className="text-[8px] text-slate-500 mt-0.5">
+                            {AI_DIFFICULTY[p.aiDifficulty]?.description}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="border-t border-dashed border-white/10 px-4 py-2 flex justify-between bg-slate-950/50 font-mono">
+                      <div>
+                        <div className="text-[7px] text-slate-500 uppercase">
+                          Class
+                        </div>
+                        <div
+                          className="text-[10px] font-black"
+                          style={{ color: pColor }}
+                        >
+                          EXEC
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[7px] text-slate-500 uppercase">
+                          Seat
+                        </div>
+                        <div className="text-[10px] font-black">
+                          {idx + 1}
+                          {String.fromCharCode(65 + (idx % 6))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[7px] text-slate-500 uppercase">
+                          Status
+                        </div>
+                        <div className="text-[10px] font-black text-emerald-400">
+                          OPEN
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+>>>>>>> Stashed changes
+          </div>
+
+          {/* CPU Tilføj-panel (kun host) */}
+          {role === "host" && cpuCount < 5 && (
+            <div className="relative z-10 bg-slate-900/80 border border-white/10 rounded-2xl p-5 w-full max-w-sm mb-6 backdrop-blur-md">
+              <div className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500 mb-3 text-center">
+                + Tilføj CPU-modstander
+              </div>
+              <div className="flex gap-2">
+                {Object.entries(AI_DIFFICULTY).map(([key, val]) => (
+                  <button
+                    key={key}
+                    onClick={() => addCPU(key)}
+                    className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/15 active:scale-95 transition-all text-center"
+                  >
+                    <div className="text-xl mb-1">{val.emoji}</div>
+                    <div className="text-[8px] font-black uppercase text-slate-300">
+                      {val.label}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Launch */}
+          {role === "host" && (
+            <div className="mt-auto relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+              <button
+                onClick={initGame}
+                disabled={gameState.players.length === 0}
+                className="group relative bg-white text-slate-950 px-20 py-6 rounded-2xl font-black uppercase tracking-[0.2em] shadow-[0_20px_50px_rgba(255,255,255,0.1)] hover:bg-blue-600 hover:text-white transition-all active:scale-95 disabled:opacity-30"
+              >
+                <div className="flex items-center gap-4 text-xl">
+                  <CheckCircle2 size={24} />
+                  Confirm & Launch
+                </div>
+              </button>
+            </div>
+          )}
         </div>
-        </>
+      </>
     );
   }
 
-
   // --- E. Hovedskærm (Host-visning) ---
-  if (role === 'host') {
-    const activeIncident = gameState.incidents?.[gameState.incidents.length - 1];
+  if (role === "host") {
+    const activeIncident =
+      gameState.incidents?.[gameState.incidents.length - 1];
 
+    const activeIncidentLocation =
+      activeIncident?.scope === INCIDENT_SCOPES.REGION
+        ? activeIncident.category?.replace(/^[A-Z]{2}_/, "")
+        : activeIncident?.city;
+
+<<<<<<< Updated upstream
     return (
       <div className={`h-screen flex bg-black text-white overflow-hidden font-sans relative`}>
       <style>{`
         /* 1. BY-INFO PANEL (Glider bagved manifestet) */
+=======
+    const focusCity = (cityName) => {
+      const cityData = CITIES[cityName];
+      if (cityData && mapRef.current) {
+        const map = mapRef.current._leaflet_map || window.mapInstance;
+        if (map) {
+          map.flyTo([cityData.lat, cityData.lng], 7, {
+            animate: true,
+            duration: 2,
+          });
+          setSelectedCity({ name: cityName, ...cityData });
+        }
+      }
+    };
+
+    return (
+      <div className="h-screen flex bg-[#02040a] text-slate-200 overflow-hidden font-sans relative">
+        <style>{`
+        /* Animerede scanlines effekt over hele skærmen */
+        .scanlines {
+          position: relative; overflow: hidden;
+        }
+        .scanlines::before {
+          content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+          background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+          z-index: 5000; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+>>>>>>> Stashed changes
         .modern-sidebar {
           position: fixed;
           top: 0;
@@ -2443,6 +3936,7 @@ export default function App() {
 
         `}</style>
 
+<<<<<<< Updated upstream
         {/* VENSTRE SIDE: KORT OG OVERLAYS */}
         <div className="flex-1 flex flex-col relative h-full">
         {activeIncident && (
@@ -2504,9 +3998,336 @@ export default function App() {
           </div>
           </div>
         )}
+=======
+        {/* VENSTRE SIDE: KORT-CENTRAL */}
+        <div className="flex-1 flex flex-col relative h-full scanlines">
+          {/* News Ticker - Professional Single Line News Layout */}
+{activeIncident && (
+  <div className="absolute top-0 left-0 right-0 z-[4000] bg-[#0c0c0c] border-b-2 border-red-600 h-10 flex items-center overflow-hidden shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+    
+    {/* LIVE / BREAKING BADGE - Ligger fast til venstre */}
+    <div className="bg-red-600 self-stretch px-4 flex items-center gap-2 relative overflow-hidden shadow-[10px_0_15px_rgba(0,0,0,0.4)] z-50">
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -skew-x-12 animate-[pulse_2s_infinite]" />
+      <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+      <span className="text-white font-[900] italic tracking-tighter text-[11px] whitespace-nowrap relative z-10">
+        BREAKING NEWS
+      </span>
+    </div>
+
+    {/* TICKER CONTAINER - Her kører den enkelte linje */}
+    <div className="flex-1 h-full bg-black/20 relative flex items-center overflow-hidden">
+      <div className="ticker-scroll whitespace-nowrap flex items-center">
+        
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="flex items-center flex-nowrap shrink-0">
+            {/* LIGE NU sektion */}
+            <span className="ml-8 text-red-600 font-black text-[12px]">LIGE NU:</span>
+            
+            {/* Hændelse og By i én linje */}
+            <span className="ml-2 text-white font-bold text-[12px] uppercase">
+              {activeIncident.label} I
+            </span>
+
+            {/* Kompakt By-tag med flag */}
+            <div className="ml-2 flex items-center gap-1.5 bg-white/10 px-2 py-0.5 rounded border border-white/10">
+              <span className="text-sm leading-none">
+                {countryFlags[CITIES[activeIncidentLocation]?.country] || "📍"}
+              </span>
+              <span className="text-white font-black text-[11px] uppercase whitespace-nowrap">
+                {activeIncidentLocation}
+              </span>
+            </div>
+
+            {/* Separator og Ekstra info */}
+            <span className="ml-6 text-white/40 font-light">|</span>
+            <span className="ml-6 text-slate-300 font-medium italic text-[11px] uppercase tracking-wide">
+              FORSINKELSER OG AFLYSTE AFGANGE I OMRÅDET
+            </span>
+            
+            <span className="ml-6 text-white/40 font-light">|</span>
+            <span className="ml-6 text-slate-400 font-normal text-[11px] uppercase tracking-tight">
+              TJEK TERMINALEN FOR OPDATEREDE REJSEPLANER
+            </span>
+            
+            <span className="ml-6 text-white/20">|</span>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* TIDSTEMPEL - Ligger fast til højre */}
+    <div className="hidden sm:flex px-4 h-full items-center bg-zinc-900 border-l border-white/5 z-50">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-black text-white/90 tabular-nums leading-none">
+          {formatTime(interpolatedTime)}
+        </span>
+        <span className="text-[8px] font-bold text-red-500 tracking-widest uppercase border-l border-white/10 pl-2">
+          LIVE
+        </span>
+      </div>
+    </div>
+
+    {/* CSS Animation rettet til single line */}
+    <style jsx>{`
+      .ticker-scroll {
+        display: flex;
+        flex-direction: row;
+        width: max-content;
+        animation: ticker-move 40s linear infinite;
+      }
+
+      @keyframes ticker-move {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-33.33%); }
+      }
+    `}</style>
+  </div>
+)}
+          {debugOpen && (
+            <div className="absolute top-14 right-4 z-[4000] bg-slate-950/90 border border-slate-700 text-slate-200 rounded-2xl p-3 text-xs font-mono shadow-lg">
+              <div className="font-bold text-slate-100 mb-1">Incident check</div>
+              <div className="flex justify-between gap-2">
+                <span>Count</span>
+                <span className="font-semibold">{incidentCheckCounter}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span>Chance</span>
+                <span className="font-semibold">25%</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span>Active</span>
+                <span className="font-semibold">{gameState?.incidents?.length || 0}</span>
+              </div>
+              {lastIncidentCheck ? (
+                <>
+                  <div className="border-t border-slate-700 my-2" />
+                  <div className="leading-5">
+                    <div>Roll: {lastIncidentCheck.roll.toFixed(2)}</div>
+                    <div>
+                      Result: {lastIncidentCheck.spawned ? "Spawned" : "No incident"}
+                    </div>
+                    <div className="text-slate-400 text-[11px] truncate">
+                      {lastIncidentCheck.message}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 text-slate-400">Venter på næste timecheck…</div>
+              )}
+              <div className="border-t border-slate-700 my-2" />
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => spawnDebugIncident("city")}
+                  className="w-full rounded-xl bg-blue-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-blue-500 transition"
+                >
+                  Spawn city incident
+                </button>
+                <button
+                  onClick={() => spawnDebugIncident("region")}
+                  className="w-full rounded-xl bg-amber-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-950 hover:bg-amber-500 transition"
+                >
+                  Spawn region incident
+                </button>
+                <button
+                  onClick={() => spawnDebugIncident(null)}
+                  className="w-full rounded-xl bg-slate-700 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-slate-600 transition"
+                >
+                  Spawn random incident
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Map Container med subtil vignette */}
+          <div className="absolute inset-0 z-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.8)]" />
+          <div ref={mapRef} className="flex-1 w-full bg-[#010204]" />
+
+          {/* Flyvende HUD Elementer */}
+          <div className="absolute top-16 left-8 z-[2000] flex flex-col gap-4">
+{/* UR & STATUS - Taktisk Design */}
+<div className="group relative bg-[#0f1115] border-l-4 border-l-blue-500 border-y border-r border-white/10 p-4 rounded-r-2xl shadow-2xl flex items-center gap-5 min-w-[200px] overflow-hidden">
+  
+  {/* Baggrunds-effekt: Svagt blåt skær */}
+  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-transparent pointer-events-none" />
+
+  {/* Ikon boks */}
+  <div className="relative z-10 h-12 w-12 rounded-xl bg-white/5 flex items-center justify-center border border-white/10 shadow-inner group-hover:border-blue-500/30 transition-colors">
+    {interpolatedTime / 60 >= 7 && interpolatedTime / 60 < 20 ? (
+      <Sun className="text-amber-400 w-6 h-6 drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]" />
+    ) : (
+      <Moon className="text-blue-400 w-6 h-6 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)]" />
+    )}
+  </div>
+
+  <div className="relative z-10">
+    <div className="flex items-center gap-2 mb-1">
+      <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] leading-none">
+        System Time
+      </span>
+      {/* Lille pulserende prik for at vise uret "kører" */}
+      <div className="w-1 h-1 rounded-full bg-blue-500 animate-pulse" />
+    </div>
+    
+    <div className="flex items-baseline gap-1">
+      <span className="text-4xl font-mono font-black tracking-tighter text-white">
+        {formatTime(interpolatedTime)}
+      </span>
+      <span className="text-[10px] font-mono text-white/30 font-bold uppercase tracking-widest">
+        UTC
+      </span>
+    </div>
+
+    {/* Status linje under uret */}
+    <div className="mt-1 flex items-center gap-2">
+       <div className="h-[2px] w-12 bg-blue-500/30 rounded-full overflow-hidden">
+          <div className="h-full bg-blue-500 animate-[loading_2s_infinite]" style={{width: '40%'}} />
+       </div>
+       <span className="text-[8px] text-white/40 font-bold uppercase tracking-tighter">
+         Synchronized
+       </span>
+    </div>
+  </div>
+
+  {/* Dekorativ bundlinie */}
+  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+</div>
+
+            {/* MÅLBY - TRANSFORMERET TIL EN "COMMAND" KNAP */}
+{gameState.goalCity && (
+  <button 
+    onClick={() => focusCity(gameState.goalCity)} 
+    className="group relative bg-[#0f1115] border-l-4 border-l-amber-500 border-y border-r border-white/10 p-4 rounded-r-2xl shadow-2xl transition-all hover:bg-[#161920] active:scale-[0.98] text-left w-full max-w-xs overflow-hidden"
+  >
+    {/* Baggrunds-effekt: Svagt "scanning" grid eller glow */}
+    <div className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-transparent pointer-events-none" />
+    
+    {/* Top Bar med Status */}
+    <div className="flex justify-between items-start mb-3 relative z-10">
+      <div className="flex flex-col">
+        <span className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] leading-none"> 
+          Operational Objective 
+        </span>
+        <span className="text-[8px] text-amber-500/50 font-mono mt-1">
+          ID: {gameState.goalCity.substring(0,3).toUpperCase()}-{Math.floor(Math.random() * 900 + 100)}
+        </span>
+      </div>
+      
+      {/* Live Status Indikator */}
+      <div className="flex items-center gap-2 bg-black/40 px-2 py-1 rounded-md border border-white/5">
+        <div className="flex gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+>>>>>>> Stashed changes
         </div>
+        <span className="text-[8px] font-bold text-white/70 tracking-widest uppercase">Active</span>
+      </div>
+    </div>
+    
+    {/* Hovedindhold: Flag og By */}
+    <div className="flex items-center gap-4 mb-4 relative z-10">
+      <div className="flex-shrink-0 w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center border border-white/10 shadow-inner group-hover:border-amber-500/30 transition-colors">
+        <span className="text-3xl filter drop-shadow-md">
+          {countryFlags[CITIES[gameState.goalCity]?.country] || "📍"}
+        </span>
+      </div>
+      
+      <div className="flex flex-col">
+        <div className="text-2xl font-black text-white leading-none tracking-tight group-hover:text-amber-400 transition-colors"> 
+          {gameState.goalCity} 
+        </div>
+        <div className="text-[10px] text-white/40 font-medium mt-1 uppercase tracking-wider">
+          {CITIES[gameState.goalCity]?.country} Sector
+        </div>
+      </div>
+    </div>
+
+    {/* Info-Tags (Renset og struktureret) */}
+    <div className="flex flex-wrap gap-1.5 relative z-10 border-t border-white/5 pt-3">
+      {/* Kategori - Renset for prefix */}
+      {CITIES[gameState.goalCity]?.category && (
+        <div className="flex flex-col bg-white/5 p-1.5 rounded-md border border-white/5 min-w-[60px]">
+          <span className="text-[7px] text-white/30 uppercase font-bold">Region</span>
+          <span className="text-[9px] text-amber-200 font-bold truncate">
+            {CITIES[gameState.goalCity].category.split('_').pop()}
+          </span>
+        </div>
+      )}
+      
+      {/* Parent City / Area */}
+      {CITIES[gameState.goalCity]?.parent && (
+        <div className="flex flex-col bg-white/5 p-1.5 rounded-md border border-white/5 min-w-[60px]">
+          <span className="text-[7px] text-white/30 uppercase font-bold">Area</span>
+          <span className="text-[9px] text-blue-300 font-bold">
+            {CITIES[gameState.goalCity].parent}
+          </span>
+        </div>
+      )}
+
+      {/* Størrelse */}
+      {CITIES[gameState.goalCity]?.size && (
+        <div className="flex flex-col bg-white/5 p-1.5 rounded-md border border-white/5">
+          <span className="text-[7px] text-white/30 uppercase font-bold">Scale</span>
+          <span className="text-[9px] text-emerald-400 font-bold capitalize">
+            {CITIES[gameState.goalCity].size}
+          </span>
+        </div>
+      )}
+    </div>
+
+    {/* "Dekorativ" bundlinie - Gør det mere UI-agtigt */}
+    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-amber-500/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+  </button>
+)}
+)}
+          </div>
+
+          {/* MAP CONTROLS - MINIMALIST NEON */}
+          <div className="absolute bottom-10 left-8 z-[2000] flex gap-3">
+            <button
+              onClick={() => setAutoZoom(!autoZoom)}
+              className={`p-4 rounded-2xl border transition-all ${autoZoom ? "bg-blue-600 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "bg-slate-900/80 border-white/10 text-slate-400"}`}
+            >
+              <Navigation size={22} fill={autoZoom ? "white" : "none"} />
+            </button>
+            <button
+              onClick={() => setDebugOpen(!debugOpen)}
+              className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-white hover:bg-slate-800 transition-all"
+            >
+              <Settings size={22} className={debugOpen ? "rotate-90" : ""} />
+            </button>
+
+            {/* Cache-knap - kun synlig for host */}
+            {role === "host" && (
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={cacheAllRoutes}
+                  disabled={!!cacheProgress}
+                  className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-white hover:bg-slate-800 disabled:opacity-50 transition-all"
+                  title="Cache alle ruter"
+                >
+                  {cacheProgress ? (
+                    <span className="text-xs font-bold">
+                      {cacheProgress.done}/{cacheProgress.total}
+                    </span>
+                  ) : (
+                    <Globe size={22} />
+                  )}
+                </button>
+                {cacheProgress && (
+                  <div className="w-full bg-white/10 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-400 h-1.5 rounded-full transition-all"
+                      style={{
+                        width: `${(cacheProgress.done / cacheProgress.total) * 100}%`,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
+<<<<<<< Updated upstream
         {/* MIDTEN: MODERNE BY-INFO (Glider bagved manifest) */}
         <div className={`modern-sidebar ${selectedCity ? 'open' : ''}`}>
         {selectedCity && (
@@ -2528,9 +4349,196 @@ export default function App() {
             <div key={i} className="route-card-compact" style={{ borderLeftColor: r.color }}>
             <div className="route-id-badge" style={{ color: r.color }}>{r.name}</div>
             <div className="route-dest-text">➡ {r.to}</div>
+=======
+        {/* MIDTEN: CITY DETAILS PANEL (THE TERMINAL) */}
+        <div className={`modern-sidebar ${selectedCity ? "open" : ""}`}>
+          {selectedCity && (
+            <div className="flex flex-col h-full">
+              <div className="p-10 bg-gradient-to-br from-blue-600/10 to-transparent">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h2 className="text-5xl font-black italic uppercase tracking-tighter text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+                      {selectedCity.name}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-widest">
+                        Node Verified // Signal Strength 98%
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCity(null)}
+                    className="text-slate-500 hover:text-white transition-colors"
+                  >
+                    <XCircle size={32} strokeWidth={1} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 px-10 overflow-y-auto custom-scrollbar">
+                <div className="grid grid-cols-1 gap-4">
+                  {selectedCity.routes?.map((r, i) => (
+                    <div
+                      key={i}
+                      className="group bg-white/[0.02] border border-white/5 p-5 rounded-2xl hover:bg-white/[0.05] transition-all relative overflow-hidden"
+                    >
+                      <div
+                        className="absolute top-0 left-0 w-1 h-full"
+                        style={{ backgroundColor: r.color }}
+                      />
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div
+                            className="text-[10px] font-black uppercase mb-1 opacity-50"
+                            style={{ color: r.color }}
+                          >
+                            {r.name}
+                          </div>
+                          <div className="text-lg font-black text-white uppercase tracking-tight">
+                            To: {r.to}
+                          </div>
+                        </div>
+                        <ChevronRight className="text-slate-700 group-hover:text-white transition-all transform group-hover:translate-x-1" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+        </div>
+
+       {/* HØJRE SIDEBAR: GLOBAL MANIFEST & LOG */}
+        <div className="main-sidebar-area flex flex-col h-full bg-[#0a0c10] border-l border-white/5 shadow-2xl">
+          
+          {/* PLAYER LIST / LIVE MANIFEST */}
+<div className="space-y-2 overflow-y-auto custom-scrollbar pr-2 pb-2">
+  {(() => {
+    // 1. Hjælpefunktion til distance (Pythagoras)
+    const calculateDist = (p) => {
+      if (!gameState.goalCity || !CITIES[gameState.goalCity]) return Infinity;
+      const goalPos = CITIES[gameState.goalCity].pos;
+      // Vi bruger 'from' positionen fra nuværende segment hvis rejser, ellers nuværende by
+      const currentPos = CITIES[p.currentCity]?.pos || [0, 0];
+      
+      const dx = goalPos[0] - currentPos[0];
+      const dy = goalPos[1] - currentPos[1];
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    // 2. Sortér spillere: Dem med mindst distance øverst
+    const sortedPlayers = [...(gameState.players || [])].sort((a, b) => {
+      return calculateDist(a) - calculateDist(b);
+    });
+
+    return sortedPlayers.map((p, index) => {
+      const currentSegment = p.segments?.find(
+        (seg) => interpolatedTime >= seg.departure && interpolatedTime <= seg.arrival
+      );
+      const finalDestination = p.segments?.[p.segments.length - 1]?.to;
+      const distToGoal = calculateDist(p);
+      
+      // Skaleringsfaktor for kilometer
+      const displayDist = distToGoal === Infinity ? "N/A" : (distToGoal * 111).toFixed(0) + " km";
+
+      // Definer rank farve (Guld, Sølv, Bronze, Grå)
+      const rankColor = index === 0 ? "text-amber-400" : // Guld
+                         index === 1 ? "text-slate-300" : // Sølv
+                         index === 2 ? "text-orange-500" : // Bronze
+                         "text-white/30";                   // Resten
+
+      return (
+        <div key={p.id} className="relative group overflow-hidden">
+          <div className="flex items-center gap-2">
+            
+            {/* 3. Placeringsmarkør (Rank) */}
+            <div className={`w-8 shrink-0 flex flex-col items-center justify-center h-full border-r border-white/5 py-4 ${rankColor}`}>
+                <span className="text-[9px] font-black uppercase tracking-tighter">Pos</span>
+                <span className="text-2xl font-[900] italic leading-none tabular-nums tracking-tighter">
+                  {index + 1}
+                </span>
+                <div className={`w-3 h-0.5 mt-1 rounded-full ${index < 3 ? 'bg-current opacity-60' : 'bg-white/10'}`}></div>
+            </div>
+
+            {/* Spiller Boks */}
+            <div className="flex-1 flex items-center gap-3 p-3 rounded-r-xl bg-white/[0.02] border-y border-r border-white/5 border-l-2 border-l-blue-500/40 group-hover:bg-[#161920] group-hover:border-l-blue-500 transition-all relative z-10">
+              
+              <div className="relative">
+                <span className="text-2xl filter drop-shadow-md z-10 relative grayscale group-hover:grayscale-0 transition-all">
+                  {p.avatar}
+                </span>
+                {p.isTraveling && (
+                   <div className="absolute inset-0 border-2 border-amber-500/50 rounded-full animate-ping scale-75" />
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-baseline">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-black uppercase truncate text-white tracking-wider">
+                      {p.name}
+                    </span>
+                    {/* AFSTAND TIL MÅL */}
+                    <span className="text-[8px] font-bold text-blue-400/80 tracking-widest uppercase">
+                      Dist: {displayDist}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-1 rounded tabular-nums">
+                    {p.money}€
+                  </span>
+                </div>
+                
+                <div className="mt-2 flex flex-col gap-0.5 overflow-hidden">
+                  {p.isTraveling && currentSegment ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter truncate">
+                          In Transit → {finalDestination}
+                        </span>
+                        <div className="w-8 h-[2px] bg-white/5 rounded-full overflow-hidden shrink-0 ml-2">
+                          <div className="h-full bg-amber-500 animate-[loading_3s_infinite]" />
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-1.5 bg-amber-500/5 p-1 rounded border border-amber-500/10 overflow-hidden">
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[7px] text-white/30 uppercase font-bold tracking-widest">At:</span>
+                            <span className="text-[9px] text-white/80 font-bold truncate">
+                              {currentSegment.from} → {currentSegment.to}
+                            </span>
+                          </div>
+                          <div className="text-[7px] text-amber-500/60 font-mono">
+                            ETA: {formatTime(currentSegment.arrival)}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[8px] font-black text-blue-400 uppercase tracking-tighter">
+                          {p.isTraveling ? "Waiting at platform" : "Stationary"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <MapPin size={8} className="text-blue-500/40" />
+                        <span className="text-[9px] text-white/70 font-bold truncate">
+                          {p.currentCity}
+                          <span className="text-white/30 font-normal ml-1 italic text-[8px]">
+                            {p.isTraveling ? "(Transferring)" : `(${p.currentStation || "Central"})`}
+                          </span>
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+>>>>>>> Stashed changes
+            </div>
           </div>
+<<<<<<< Updated upstream
           </div>
 
           <div className="p-6 bg-white/[0.02] border-t border-white/5 mt-auto text-center">
@@ -2540,8 +4548,15 @@ export default function App() {
           </div>
           </div>
         )}
+=======
+>>>>>>> Stashed changes
         </div>
+      );
+    });
+  })()}
+</div>
 
+<<<<<<< Updated upstream
         {/* HØJRE SIDEBAR: MANIFEST OG LOG */}
         <div className="main-sidebar-area flex flex-col h-full bg-slate-950 border-l border-white/10 overflow-hidden">
 
@@ -2688,7 +4703,63 @@ export default function App() {
         </div>
         </div>
         </div>
+=======
+          {/* SYSTEM LOG - TERMINAL STYLE */}
+          <div className="flex-1 flex flex-col min-h-0 bg-[#08090c] border-t border-white/5">
+            <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between bg-[#0f1115]">
+              <div className="flex items-center gap-2">
+                <div className="relative h-2 w-2">
+                   <div className="absolute inset-0 bg-blue-500 rounded-full animate-ping opacity-20" />
+                   <Activity size={10} className="text-blue-500 relative z-10" />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/60">
+                  Terminal Output
+                </span>
+              </div>
+              <span className="text-[8px] font-mono text-white/20">v2.0.4-STABLE</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px] custom-scrollbar scroll-smooth">
+              {(gameState.logs || [])
+                .slice()
+                .reverse()
+                .map((log, i) => (
+                  <div
+                    key={i}
+                    className="flex gap-3 group opacity-60 hover:opacity-100 transition-opacity bg-white/[0.01] p-2 rounded border border-transparent hover:border-white/5"
+                  >
+                    <span className="text-blue-500/50 shrink-0 font-bold tabular-nums">
+                      [{formatTime(log.time)}]
+                    </span>
+                    <div className="flex flex-col">
+                       <span className={`uppercase tracking-tight leading-relaxed ${
+                          log.message.includes("MISTET") ? "text-red-400 drop-shadow-[0_0_5px_rgba(239,68,68,0.3)]" : 
+                          log.message.includes("ANKOMMET") ? "text-emerald-400" : 
+                          "text-slate-300"
+                        }`}>
+                          <span className="text-white/20 mr-1 opacity-0 group-hover:opacity-100 font-black tracking-widest text-[8px] transition-opacity underline decoration-blue-500/50 underline-offset-4">LOG</span>
+                          {log.message}
+                        </span>
+                    </div>
+                  </div>
+                ))}
+              {/* Fake cursor i bunden */}
+              <div className="flex gap-2 items-center text-blue-500/40 p-2 animate-pulse">
+                 <span>&gt;</span>
+                 <div className="w-2 h-3 bg-blue-500/40" />
+              </div>
+            </div>
+          </div>
+          
+          <style jsx>{`
+            @keyframes loading {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+          `}</style>
+>>>>>>> Stashed changes
         </div>
+      </div>
     );
   }
 
@@ -2701,16 +4772,22 @@ export default function App() {
   if (!currentPlayer) {
     return (
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
-      <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-      <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">Forbinder til session...</p>
-      <p className="text-slate-600 text-[9px]">uid: {user?.uid?.slice(0,8)}</p>
+        <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+        <p className="font-black uppercase tracking-widest text-[10px] animate-pulse">
+          Forbinder til session...
+        </p>
+        <p className="text-slate-600 text-[9px]">
+          uid: {user?.uid?.slice(0, 8)}
+        </p>
       </div>
     );
   }
   // >>> SLUT PÅ BLOK <<<
 
-
+// Singlescreen: kort + spillerpanel side om side
+if (gameMode === 'singlescreen') {
   return (
+<<<<<<< Updated upstream
     <div className="h-screen bg-black flex flex-col text-white font-mono select-none overflow-hidden">
 
     {/* TOP BAR: Profil & Økonomi */}
@@ -4184,5 +6261,73 @@ export default function App() {
 
     <style>{`@keyframes move { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
     </div>
+=======
+    <SingleScreenLayout
+      mapRef={mapRef}
+      interpolatedTime={interpolatedTime}
+      gameState={gameState}
+      selectedCity={selectedCity}
+      setSelectedCity={setSelectedCity}
+      currentPlayer={currentPlayer}
+      playerTab={playerTab} setPlayerTab={setPlayerTab}
+      activeTab={activeTab} setActiveTab={setActiveTab}
+      selectedDeparture={selectedDeparture} setSelectedDeparture={setSelectedDeparture}
+      departures={departures}
+      jobMarket={jobMarket}
+      selectedJob={selectedJob} setSelectedJob={setSelectedJob}
+      jobScreen={jobScreen} setJobScreen={setJobScreen}
+      jobEventChoice={jobEventChoice} setJobEventChoice={setJobEventChoice}
+      showMiniGame={showMiniGame} setShowMiniGame={setShowMiniGame}
+      currentEventIndex={currentEventIndex} setCurrentEventIndex={setCurrentEventIndex}
+      eventResults={eventResults} setEventResults={setEventResults}
+      jackpotEvent={jackpotEvent}
+      ticketScrollRef={ticketScrollRef}
+      currentStopRef={currentStopRef}
+      travel={travel}
+      handleLocalTravel={handleLocalTravel}
+      handleStepOffNextStation={handleStepOffNextStation}
+      playerId={playerId}
+      localTransportMode={localTransportMode}
+      setLocalTransportMode={setLocalTransportMode}
+      getNearbyStations={getNearbyStations}
+      handleTakeJob={handleTakeJob}
+      subFilter={subFilter}
+      setSubFilter={setSubFilter}
+    />
+>>>>>>> Stashed changes
   );
+}
+
+  return (
+  <PlayerView
+    currentPlayer={currentPlayer}
+    gameState={gameState}
+    interpolatedTime={interpolatedTime}
+    playerTab={playerTab} setPlayerTab={setPlayerTab}
+    activeTab={activeTab} setActiveTab={setActiveTab}
+    selectedDeparture={selectedDeparture} setSelectedDeparture={setSelectedDeparture}
+    departures={departures}
+    jobMarket={jobMarket}
+    selectedJob={selectedJob} setSelectedJob={setSelectedJob}
+    jobScreen={jobScreen} setJobScreen={setJobScreen}
+    jobEventChoice={jobEventChoice} setJobEventChoice={setJobEventChoice}
+    showMiniGame={showMiniGame} setShowMiniGame={setShowMiniGame}
+    currentEventIndex={currentEventIndex} setCurrentEventIndex={setCurrentEventIndex}
+    eventResults={eventResults} setEventResults={setEventResults}
+    jackpotEvent={jackpotEvent}
+    ticketScrollRef={ticketScrollRef}
+    currentStopRef={currentStopRef}
+    travel={travel}
+    handleLocalTravel={handleLocalTravel}
+    handleStepOffNextStation={handleStepOffNextStation}
+    playerId={playerId}
+    localTransportMode={localTransportMode}
+    setLocalTransportMode={setLocalTransportMode}
+    getNearbyStations={getNearbyStations}
+    handleTakeJob={handleTakeJob}
+    subFilter={subFilter}
+    setSubFilter={setSubFilter}
+  />
+);
+  
 }
